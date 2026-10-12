@@ -52,7 +52,8 @@ describe("ingestion pipeline", () => {
     const item = await getItem(userId, itemId);
     expect(item?.processingStatus).toBe("completed");
     expect(item?.title).toBeTruthy();
-    expect(item?.summary).toBeTruthy();
+    const stored = await db.query.items.findFirst({ where: eq(items.id, itemId) });
+    expect(stored?.summary).toBeTruthy();
     expect(item?.category).toBe("AI & LLM");
     expect(item?.tags.length).toBeGreaterThan(0);
     expect(item?.collections.map((c) => c.name)).toContain("AI & LLM");

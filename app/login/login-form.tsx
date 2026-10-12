@@ -15,7 +15,9 @@ export function safeNext(next: string | null, origin: string): string {
   if (!next) return "/";
   try {
     const url = new URL(next, origin);
-    return url.origin === origin ? `${url.pathname}${url.search}${url.hash}` : "/";
+    if (url.origin !== origin) return "/";
+    // "/.//evil.com" resolves to pathname "//evil.com" — protocol-relative once assigned. Collapse it.
+    return `/${url.pathname.replace(/^\/+/, "")}${url.search}${url.hash}`;
   } catch {
     return "/";
   }

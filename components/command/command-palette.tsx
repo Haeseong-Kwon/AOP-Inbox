@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { useUI } from "@/components/app/ui-store";
 import { SourceIcon } from "@/components/inbox/source-icon";
-import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
+import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
 import { apiGet, qs } from "@/lib/client/api";
 import type { SearchHit } from "@/lib/search/hybrid";
 import type { ItemPage } from "@/lib/items/types";
@@ -64,6 +64,7 @@ export function CommandPalette() {
       description="Search items or run a command"
       className="top-[18%] translate-y-0 sm:max-w-xl"
     >
+      <Command loop>
       <CommandInput value={query} onValueChange={setQuery} placeholder="Search your inbox or type a command…" />
       <CommandList className="max-h-[min(420px,60dvh)]">
         <CommandEmpty>Nothing matches. Press Enter on “Ask Inbox” to ask instead.</CommandEmpty>
@@ -87,6 +88,7 @@ export function CommandPalette() {
           ))}
         </CommandGroup>
       </CommandList>
+      </Command>
     </CommandDialog>
   );
 }

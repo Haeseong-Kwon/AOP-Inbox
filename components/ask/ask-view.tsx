@@ -145,7 +145,7 @@ export function AskView() {
           e.preventDefault();
           void ask(input);
         }}
-        className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom)+0.75rem)] mb-3 md:bottom-4 md:mb-4"
+        className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] -mx-4 bg-gradient-to-t from-background from-70% to-transparent px-4 pt-6 pb-3 sm:-mx-8 sm:px-8 md:bottom-0 md:pb-5"
       >
         <div className={cn("flex items-end gap-2 rounded-xl border bg-card p-2 pl-4 shadow-sm focus-within:border-signal/50")}>
           <textarea

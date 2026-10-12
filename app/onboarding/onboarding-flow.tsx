@@ -44,7 +44,7 @@ export function OnboardingFlow() {
         >
           {step === 0 && (
             <div className="flex flex-col gap-4">
-              <h1 className="text-[30px] leading-[1.15] font-semibold tracking-[-0.025em]">
+              <h1 className="text-[30px] leading-[1.15] font-semibold tracking-[-0.025em] text-balance">
                 Everything worth keeping, in one intelligent inbox.
               </h1>
               <p className="text-[16px] leading-relaxed text-muted-foreground">

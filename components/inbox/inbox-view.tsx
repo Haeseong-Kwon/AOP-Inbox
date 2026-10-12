@@ -262,7 +262,7 @@ export function InboxView() {
       )}
       {!wide && (
         <Sheet open={Boolean(openId)} onOpenChange={(open) => !open && closeItem()}>
-          <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 sm:max-w-xl">
+          <SheetContent side="right" showCloseButton={false} className="gap-0 bg-background p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
             <SheetTitle className="sr-only">Item details</SheetTitle>
             <SheetDescription className="sr-only">Summary, notes and related items</SheetDescription>
             {openId && <ItemDetail key={openId} id={openId} onClose={closeItem} onOpenItem={openItem} />}

@@ -32,13 +32,23 @@ const collectionSql = sql<string | null>`(
 
 type Row = Item & { tags: string[]; collection: string | null };
 
+const squash = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+
+/** A summary that only restates the user's note adds nothing — drop it. */
+function usefulSummary(row: Pick<Item, "summary" | "userNote" | "description" | "sourceType">): string | null {
+  const summary = row.summary ?? (row.sourceType === "note" ? null : row.description);
+  if (!summary || !row.userNote) return summary;
+  const s = squash(summary.replace(/…$/, ""));
+  return squash(row.userNote).includes(s) ? null : summary;
+}
+
 export function toSummary(row: Row): ItemSummary {
   return {
     id: row.id,
     sourceType: row.sourceType,
     contentKind: row.contentKind,
     title: displayTitle(row),
-    summary: row.summary ?? (row.sourceType === "note" ? null : row.description),
+    summary: usefulSummary(row),
     thumbnailUrl: row.thumbnailUrl,
     creatorName: row.creatorName,
     domain: domainOf(row.canonicalUrl),

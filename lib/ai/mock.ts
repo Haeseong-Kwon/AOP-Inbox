@@ -35,6 +35,13 @@ function topKeywords(text: string, n: number): string[] {
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, n).map(([w]) => w);
 }
 
+function clip(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const cut = text.slice(0, maxChars - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > maxChars * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,.;:–—-]+$/, "")}…`;
+}
+
 function firstSentences(text: string, maxChars: number): string {
   const sentences = text.replace(/\s+/g, " ").trim().split(/(?<=[.!?。])\s+/);
   let out = "";
@@ -42,7 +49,7 @@ function firstSentences(text: string, maxChars: number): string {
     if ((out + " " + s).trim().length > maxChars) break;
     out = (out + " " + s).trim();
   }
-  return out || text.slice(0, maxChars).trim();
+  return out || clip(text.replace(/\s+/g, " ").trim(), maxChars);
 }
 
 export function mockAnalyze(input: AnalyzeItemInput): ItemAnalysis {
@@ -67,7 +74,7 @@ export function mockAnalyze(input: AnalyzeItemInput): ItemAnalysis {
       .slice(0, 3)
       .map((s) => s.slice(0, 200)),
     actionItems: [],
-    whyItMatters: `Related to ${category.toLowerCase()}${keywords[0] ? ` — especially ${keywords.slice(0, 2).join(" and ")}` : ""}.`,
+    whyItMatters: `Filed under ${category}${keywords[0] ? `, around ${keywords.slice(0, 2).join(" and ")}` : ""}. Add an AI key for a real explanation of why it matters.`,
     importanceScore: Math.min(0.85, 0.25 + Math.min(tokens.size, 120) / 240 + (input.userNote ? 0.15 : 0)),
     language: /[가-힣]/.test(body) ? "ko" : "en",
   };

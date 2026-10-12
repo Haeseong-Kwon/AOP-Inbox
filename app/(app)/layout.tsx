@@ -19,6 +19,12 @@ function PageFallback() {
 export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <UIProvider>
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-md bg-background px-3 py-2 text-sm focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:border"
+      >
+        Skip to content
+      </a>
       <div className="flex min-h-dvh">
         <Sidebar />
         <main id="main" className="min-w-0 flex-1">

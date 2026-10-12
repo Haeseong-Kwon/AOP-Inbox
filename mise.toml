@@ -1,0 +1,31 @@
+[tools]
+node = "24"
+pnpm = "12.4.2"
+
+[tasks.setup]
+description = "Install deps, start Postgres, migrate, seed"
+run = "pnpm setup"
+
+[tasks.dev]
+run = "pnpm dev"
+
+[tasks.lint]
+run = "pnpm lint"
+
+[tasks.typecheck]
+run = "pnpm typecheck"
+
+[tasks.test]
+description = "Unit + integration (needs `pnpm db:up`)"
+run = "pnpm test"
+
+[tasks.e2e]
+run = "pnpm test:e2e"
+
+[tasks.check]
+description = "Everything that must pass before a commit"
+depends = ["lint", "typecheck", "test"]
+
+[tasks.ci]
+depends = ["check"]
+run = "pnpm build"
