@@ -26,11 +26,13 @@ export function displayTitle(item: Pick<Item, "aiTitle" | "originalTitle" | "sou
 // Tags / primary collection are folded into the row to avoid N+1 queries.
 const tagsSql = sql<string[]>`array(
   select t.name from item_tags it join tags t on t.id = it.tag_id where it.item_id = "items"."id" order by t.name limit 4)`;
+const actionCountSql = sql<number>`coalesce((
+  select jsonb_array_length(s.spec->'steps') from setup_specs s where s.item_id = "items"."id" order by s.revision desc limit 1), 0)::int`;
 const collectionSql = sql<string | null>`(
   select c.name from collection_items ci join collections c on c.id = ci.collection_id
   where ci.item_id = "items"."id" order by (c.parent_id is null), c.created_at limit 1)`;
 
-type Row = Item & { tags: string[]; collection: string | null };
+type Row = Item & { tags: string[]; collection: string | null; actionCount: number };
 
 const squash = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 
@@ -62,14 +64,18 @@ export function toSummary(row: Row): ItemSummary {
     savedAt: row.savedAt.toISOString(),
     tags: row.tags ?? [],
     collection: row.collection ?? null,
+    contentIntent: row.contentIntent,
+    actionState: row.actionState,
+    actionCount: Number(row.actionCount ?? 0),
+    appliedAt: row.appliedAt?.toISOString() ?? null,
   };
 }
 
 function selectRows() {
-  return db.select({ item: items, tags: tagsSql, collection: collectionSql }).from(items);
+  return db.select({ item: items, tags: tagsSql, collection: collectionSql, actionCount: actionCountSql }).from(items);
 }
 
-const flatten = (r: { item: Item; tags: string[]; collection: string | null }): Row => ({ ...r.item, tags: r.tags, collection: r.collection });
+const flatten = (r: { item: Item; tags: string[]; collection: string | null; actionCount: number }): Row => ({ ...r.item, tags: r.tags, collection: r.collection, actionCount: r.actionCount });
 
 export async function listItems(userId: string, q: ListQuery): Promise<ItemPage> {
   const where: SQL[] = [eq(items.userId, userId)];
@@ -79,13 +85,18 @@ export async function listItems(userId: string, q: ListQuery): Promise<ItemPage>
     where.push(ne(items.status, "archived"));
     if (q.state === "unread" || q.state === "read") where.push(eq(items.status, q.state));
     if (q.state === "favorite") where.push(eq(items.favorite, true));
-    if (q.state === "actionable") where.push(eq(items.actionable, true));
+    if (q.state === "actionable") where.push(sql`(${items.actionable} or ${items.contentIntent} in ('actionable', 'executable', 'requires_user'))`);
+    if (q.state === "ready") where.push(eq(items.actionState, "action_ready"));
+    if (q.state === "needs-approval") where.push(eq(items.actionState, "needs_approval"));
+    if (q.state === "waiting") where.push(sql`${items.actionState} in ('waiting_user', 'needs_approval')`);
+    if (q.state === "applied") where.push(sql`${items.appliedAt} is not null`);
     if (q.state === "high-value") where.push(gte(items.importanceScore, HIGH_VALUE_THRESHOLD));
   }
   if (q.collection) {
     where.push(sql`exists (select 1 from collection_items ci join collections c on c.id = ci.collection_id
       where ci.item_id = "items"."id" and (c.id = ${q.collection} or c.parent_id = ${q.collection}))`);
   }
+  if (q.intent) where.push(eq(items.contentIntent, q.intent));
   if (q.tag) {
     where.push(sql`exists (select 1 from item_tags it join tags t on t.id = it.tag_id where it.item_id = "items"."id" and t.slug = ${q.tag})`);
   }
@@ -138,6 +149,10 @@ export async function getItem(userId: string, id: string): Promise<ItemDetail | 
     publishedAt: it.publishedAt?.toISOString() ?? null,
     lastViewedAt: it.lastViewedAt?.toISOString() ?? null,
     collections: cols,
+    whatYouCanDo: it.whatYouCanDo,
+    actionabilityReason: it.actionabilityReason,
+    parentItemId: it.parentItemId,
+    guides: (await db.select({ id: items.id, title: items.aiTitle, original: items.originalTitle }).from(items).where(eq(items.parentItemId, id))).map((g) => ({ id: g.id, title: g.title ?? g.original ?? "Guide" })),
   };
 }
 
@@ -173,6 +188,8 @@ export interface HomeStats {
   unread: number;
   total: number;
   processing: number;
+  savedThisWeek: number;
+  appliedThisWeek: number;
 }
 
 export async function homeStats(userId: string): Promise<HomeStats> {
@@ -181,12 +198,16 @@ export async function homeStats(userId: string): Promise<HomeStats> {
       count(*) filter (where saved_at >= date_trunc('day', now()))::int as saved_today,
       count(*) filter (where status = 'unread')::int as unread,
       count(*) filter (where status <> 'archived')::int as total,
-      count(*) filter (where processing_status in ('pending', 'processing'))::int as processing
+      count(*) filter (where processing_status in ('pending', 'processing'))::int as processing,
+      count(*) filter (where saved_at >= now() - interval '7 days')::int as saved_week,
+      count(*) filter (where applied_at >= now() - interval '7 days')::int as applied_week
     from items where user_id = ${userId}`);
   return {
     savedToday: Number(row.saved_today),
     unread: Number(row.unread),
     total: Number(row.total),
     processing: Number(row.processing),
+    savedThisWeek: Number(row.saved_week),
+    appliedThisWeek: Number(row.applied_week),
   };
 }

@@ -102,6 +102,14 @@ export function changeRisk(change: Change, zone: string, resolved: string = chan
     }
   }
 
+  // Tools auto-load hidden files and folders (.envrc, .npmrc, .vscode/, .devcontainer/, .mise.toml…).
+  // Rather than naming them all, any hidden path component written by a setup counts as code.
+  if (zone === "workspace" && p.split("/").some((part) => part.startsWith(".") && part !== "." && part !== "..")) {
+    const workspaceRel = p.slice(p.indexOf("aop-inbox-workspace") >= 0 ? p.indexOf("aop-inbox-workspace") + "aop-inbox-workspace".length : 0);
+    if (workspaceRel.split("/").some((part) => part.startsWith(".") && part.length > 1 && part !== "..")) {
+      raise("high", `${base} is in a hidden location that tools load automatically`);
+    }
+  }
   if (zone === "workspace" && !DATA_EXTENSIONS.has(path.posix.extname(p))) {
     raise("medium", `Other tools may read ${base}, so it needs your review`);
   }

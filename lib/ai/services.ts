@@ -12,7 +12,7 @@ import { STRUCTURE_SETUP_VERSION, structureSetupInstructions, structureSetupProm
 import { factsDraftSchema, specDraftSchema, type FactsDraft, type SpecDraft } from "@/lib/actions/llm-schemas";
 import { mockExtractFacts, mockStructure } from "@/lib/actions/mock-actions";
 import type { ExtractedFacts } from "@aop-inbox/core";
-import { askInboxInstructions, askInboxPrompt, type AskContextItem } from "./prompts/ask-inbox";
+import { askInboxInstructions, askInboxPrompt, type AskContextItem, type AskExecutionContext } from "./prompts/ask-inbox";
 import { itemAnalysisSchema, type ItemAnalysis } from "./schemas";
 
 /**
@@ -141,13 +141,13 @@ export async function embedTexts(values: string[], operation: string, userId?: s
 }
 
 /** Streams an answer grounded in the given items. Yields text chunks. */
-export async function* streamAnswer(question: string, items: AskContextItem[], userId?: string): AsyncGenerator<string> {
+export async function* streamAnswer(question: string, items: AskContextItem[], userId?: string, executions: AskExecutionContext[] = []): AsyncGenerator<string> {
   const config = getAIConfig();
   if (config.provider === "mock") {
-    yield* mockAnswer(question, items);
+    yield* mockAnswer(question, items, executions);
     return;
   }
-  if (items.length === 0) {
+  if (items.length === 0 && executions.length === 0) {
     yield "I couldn't find anything in your inbox about that yet. Try different words, or save a few items on the topic first.";
     return;
   }
@@ -156,7 +156,7 @@ export async function* streamAnswer(question: string, items: AskContextItem[], u
   const result = streamText({
     model: sdk(config).chatModel(model),
     instructions: askInboxInstructions,
-    prompt: askInboxPrompt(question, items),
+    prompt: askInboxPrompt(question, items, executions),
     temperature: 0.3,
     maxRetries: 1,
   });
@@ -169,14 +169,18 @@ export async function* streamAnswer(question: string, items: AskContextItem[], u
   }
 }
 
-async function* mockAnswer(question: string, items: AskContextItem[]): AsyncGenerator<string> {
-  if (items.length === 0) {
+async function* mockAnswer(question: string, items: AskContextItem[], executions: AskExecutionContext[] = []): AsyncGenerator<string> {
+  if (items.length === 0 && executions.length === 0) {
     yield "I couldn't find anything in your inbox about that yet. Try different words, or save a few items on the topic first.";
     return;
   }
   yield `_Offline mode — add an AI key for synthesized answers. Here is what your inbox has on “${question.slice(0, 80)}”:_\n\n`;
   for (const it of items.slice(0, 6)) {
-    yield `- **${it.title}** — ${it.userNote || it.summary || "No summary yet."} [${it.index}]\n`;
+    yield `- **${it.title}** — ${it.userNote || it.summary || "No summary yet."}${it.action ? ` _(${it.action})_` : ""} [${it.index}]\n`;
+  }
+  if (executions.length) {
+    yield `\n**Set up on your Mac**\n`;
+    for (const e of executions) yield `- ${e.itemTitle} — ${e.status} ${e.date} [${e.label}]\n`;
   }
 }
 

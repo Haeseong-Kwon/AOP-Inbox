@@ -12,7 +12,7 @@ import { errorMessage, log } from "@/lib/log";
  *       → weighted fusion with recency + importance → ranked, explained results.
  */
 
-export type MatchReason = "title" | "note" | "tag" | "content" | "meaning";
+export type MatchReason = "title" | "note" | "tag" | "content" | "meaning" | "setup";
 
 export interface SearchHit {
   item: ItemSummary;
@@ -32,6 +32,7 @@ interface KeywordRow {
   title_hit: boolean;
   note_hit: boolean;
   tag_hit: boolean;
+  setup_hit: boolean;
 }
 
 async function keywordCandidates(userId: string, query: string): Promise<KeywordRow[]> {
@@ -39,7 +40,9 @@ async function keywordCandidates(userId: string, query: string): Promise<Keyword
   const rows = await db.execute(sql`
     with q as (select websearch_to_tsquery('simple', ${query}) as tsq)
     select i.id,
-      ts_rank(i.search_vector, q.tsq) + similarity(i.search_text, ${query}) * 0.5 as rank,
+      ts_rank(i.search_vector, q.tsq) + similarity(i.search_text, ${query}) * 0.5
+        + ts_rank(to_tsvector('simple', coalesce(i.action_text, '')), q.tsq) * 0.8 as rank,
+      (coalesce(i.action_text, '') ilike ${like} or to_tsvector('simple', coalesce(i.action_text, '')) @@ q.tsq) as setup_hit,
       (coalesce(i.ai_title, i.original_title, '') ilike ${like}) as title_hit,
       (coalesce(i.user_note, '') ilike ${like}) as note_hit,
       exists (select 1 from item_tags it join tags t on t.id = it.tag_id
@@ -48,6 +51,8 @@ async function keywordCandidates(userId: string, query: string): Promise<Keyword
     where i.user_id = ${userId}
       and (i.search_vector @@ q.tsq
            or i.search_text ilike ${like}
+           or coalesce(i.action_text, '') ilike ${like}
+           or to_tsvector('simple', coalesce(i.action_text, '')) @@ q.tsq
            or i.search_text % ${query}
            or exists (select 1 from item_tags it join tags t on t.id = it.tag_id where it.item_id = i.id and t.name ilike ${like}))
     order by rank desc
@@ -102,6 +107,7 @@ export async function hybridSearch(userId: string, query: string, limit = 30): P
     if (kw?.title_hit) reasons.push("title");
     if (kw?.note_hit) reasons.push("note");
     if (kw?.tag_hit) reasons.push("tag");
+    if (kw?.setup_hit) reasons.push("setup");
     if (kw && reasons.length === 0) reasons.push("content");
     if (semanticScore > 0 && (!kw || semanticScore > 0.45)) reasons.push("meaning");
     const archivedPenalty = item.status === "archived" ? 0.85 : 1;

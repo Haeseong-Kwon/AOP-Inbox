@@ -13,14 +13,14 @@ const askSchema = z.object({ question: z.string().trim().min(2, "Ask a question"
  */
 export const POST = withUser(async (req, user) => {
   const { question } = await readJson(req, askSchema, 8_000);
-  const { sources, stream } = await askInbox(user.id, question);
+  const { sources, executions, setups, stream } = await askInbox(user.id, question);
   await db.insert(searchHistory).values({ userId: user.id, kind: "ask", query: question, resultCount: sources.length });
 
   const encoder = new TextEncoder();
   const line = (obj: unknown) => encoder.encode(JSON.stringify(obj) + "\n");
   const body = new ReadableStream({
     async start(controller) {
-      controller.enqueue(line({ type: "sources", sources }));
+      controller.enqueue(line({ type: "sources", sources, executions, setups }));
       try {
         for await (const text of stream) controller.enqueue(line({ type: "delta", text }));
         controller.enqueue(line({ type: "done" }));

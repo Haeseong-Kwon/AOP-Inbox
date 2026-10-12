@@ -223,3 +223,10 @@ describe("tool locations must be trusted", () => {
     'export NVM_DIR="$HOME/Downloads/nvm"',
   ])("%s is blocked", (line) => expect(ev(line).decision).toBe("blocked"));
 });
+
+describe("hidden workspace paths", () => {
+  const ev = (p: string) =>
+    evaluateStep(step({ id: "c", type: "file_create", change: { kind: "file_write", path: p, content: "x" } as never }), spec([]), { autoRunLow: true }).decision;
+  it.each(["project/.newtool/config.yml", "project/.somerc", "project/sub/.config/tool.json", ".hidden.md"])("%s is blocked", (p) => expect(ev(p)).toBe("blocked"));
+  it("visible data files stay low", () => expect(ev("project/notes/plan.md")).toBe("auto"));
+});

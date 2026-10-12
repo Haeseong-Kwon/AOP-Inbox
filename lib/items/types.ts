@@ -22,6 +22,11 @@ export interface ItemSummary {
   savedAt: string;
   tags: string[];
   collection: string | null;
+  contentIntent: string | null;
+  actionState: string | null;
+  /** steps in the latest setup plan (0 when none) */
+  actionCount: number;
+  appliedAt: string | null;
 }
 
 export interface ItemDetail extends ItemSummary {
@@ -38,9 +43,13 @@ export interface ItemDetail extends ItemSummary {
   publishedAt: string | null;
   lastViewedAt: string | null;
   collections: { id: string; name: string; kind: string }[];
+  whatYouCanDo: string | null;
+  actionabilityReason: string | null;
+  parentItemId: string | null;
+  guides: { id: string; title: string }[];
 }
 
-export const ITEM_STATES = ["unread", "read", "favorite", "actionable", "archived", "high-value"] as const;
+export const ITEM_STATES = ["unread", "read", "favorite", "actionable", "archived", "high-value", "ready", "needs-approval", "waiting", "applied"] as const;
 export const ITEM_SORTS = ["recent", "oldest", "importance", "viewed"] as const;
 export const SOURCE_FILTERS = ["instagram", "web", "note", "youtube"] as const;
 
@@ -50,6 +59,7 @@ export const listQuerySchema = z.object({
   sort: z.enum(ITEM_SORTS).default("recent"),
   collection: z.uuid().optional(),
   tag: z.string().max(80).optional(),
+  intent: z.enum(["executable", "actionable", "knowledge", "reference", "requires_user"]).optional(),
   cursor: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(40),
 });

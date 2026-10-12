@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { CollectionNode } from "@/lib/collections/repository";
 import type { HomeStats } from "@/lib/items/repository";
 import type { CaptureRequest, CaptureResponse, ItemDetail, ItemPage, ItemSummary, ListQuery, UpdateItemRequest } from "@/lib/items/types";
+import type { ActivityEntry, DeviceView, JobView, NotificationView, SetupView } from "@/lib/execution/types";
 import { apiGet, apiSend, qs } from "./api";
 
 export type ListFilters = Partial<Omit<ListQuery, "cursor" | "limit">>;
@@ -161,4 +162,108 @@ export function useQueueNudge(active: boolean) {
     const timer = setInterval(tick, 5000);
     return () => clearInterval(timer);
   }, [active]);
+}
+
+/* ─── Action layer ─────────────────────────────────────────────────────── */
+
+
+const ACTIVE_JOB = new Set(["planning", "awaiting_approval", "queued", "executing", "verifying", "rolling_back"]);
+
+export function useSetup(itemId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["setup", itemId],
+    queryFn: ({ signal }) => apiGet<{ setup: SetupView | null }>(`/api/items/${itemId}/setup`, signal),
+    enabled: Boolean(itemId) && enabled,
+    select: (d) => d.setup,
+    refetchInterval: (q) => (q.state.data?.setup?.job && ACTIVE_JOB.has(q.state.data.setup.job.status) ? 2000 : false),
+  });
+}
+
+function invalidateActionViews(qc: QueryClient, itemId?: string | null) {
+  void qc.invalidateQueries({ queryKey: ["setup"] });
+  void qc.invalidateQueries({ queryKey: ["activity"] });
+  void qc.invalidateQueries({ queryKey: ["notifications"] });
+  void qc.invalidateQueries({ queryKey: keys.home });
+  void qc.invalidateQueries({ queryKey: ["items"] });
+  if (itemId) void qc.invalidateQueries({ queryKey: keys.item(itemId) });
+}
+
+export function useRunSetup(itemId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiSend<{ job: JobView }>(`/api/items/${itemId}/setup/run`, "POST"),
+    onSuccess: () => invalidateActionViews(qc, itemId),
+    onError: (e) => toast.error(e.message),
+  });
+}
+
+export function useJobAction(itemId?: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ jobId, action }: { jobId: string; action: "approve" | "reject" | "undo" | "continue" }) => apiSend<{ job: JobView }>(`/api/execution/${jobId}/${action}`, "POST"),
+    onSuccess: () => invalidateActionViews(qc, itemId),
+    onError: (e) => toast.error(e.message),
+  });
+}
+
+export function useCheckActions(itemId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiSend<{ ok: true }>(`/api/items/${itemId}/actions/analyze`, "POST"),
+    onSuccess: () => {
+      toast("Looking for actions…");
+      invalidateActionViews(qc, itemId);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+}
+
+export function useFeedback(itemId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { kind: "used" | "useful" | "not_using" | "rolled_back" | "remind_later" | "applied"; jobId?: string }) =>
+      apiSend<{ ok: true }>(`/api/items/${itemId}/feedback`, "POST", body),
+    onSuccess: (_d, v) => {
+      toast(v.kind === "remind_later" ? "We'll remind you in two days" : v.kind === "applied" ? "Marked as applied" : "Thanks — noted");
+      invalidateActionViews(qc, itemId);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+}
+
+export function useNotifications() {
+  return useQuery({
+    queryKey: ["notifications"],
+    queryFn: ({ signal }) => apiGet<{ notifications: NotificationView[] }>("/api/notifications", signal),
+    select: (d) => d.notifications,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useNotificationUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; read?: true; resolved?: true }) => apiSend(`/api/notifications/${id}`, "PATCH", body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
+export function useActivity() {
+  return useQuery({
+    queryKey: ["activity"],
+    queryFn: ({ signal }) =>
+      apiGet<{ entries: ActivityEntry[]; applied: { id: string; title: string | null; appliedAt: string | null; sourceType: string }[]; stats: { appliedThisWeek: number; appliedTotal: number } }>(
+        "/api/activity",
+        signal,
+      ),
+    refetchInterval: (q) => (q.state.data?.entries.some((e) => ACTIVE_JOB.has(e.status)) ? 3000 : false),
+  });
+}
+
+export function useDevices() {
+  return useQuery({
+    queryKey: ["devices"],
+    queryFn: ({ signal }) => apiGet<{ devices: DeviceView[]; executionPaused: boolean }>("/api/devices", signal),
+    refetchInterval: 15_000,
+  });
 }
