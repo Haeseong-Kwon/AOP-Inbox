@@ -70,7 +70,7 @@ function keysDeep(value: unknown, prefix = ""): string[] {
  * `resolved` is the absolute path after expansion (and realpath on the device).
  * Matching is case-insensitive because APFS is: `.CLAUDE/` is `.claude/`.
  */
-export function changeRisk(change: Change, zone: string, resolved: string = change.path): ChangeRisk {
+export function changeRisk(change: Change, zone: string, resolved: string = change.path, workspaceRelative?: string): ChangeRisk {
   const reasons: string[] = [];
   let risk: Risk = "low";
   const raise = (r: Risk, reason: string) => {
@@ -104,11 +104,11 @@ export function changeRisk(change: Change, zone: string, resolved: string = chan
 
   // Tools auto-load hidden files and folders (.envrc, .npmrc, .vscode/, .devcontainer/, .mise.toml…).
   // Rather than naming them all, any hidden path component written by a setup counts as code.
-  if (zone === "workspace" && p.split("/").some((part) => part.startsWith(".") && part !== "." && part !== "..")) {
-    const workspaceRel = p.slice(p.indexOf("aop-inbox-workspace") >= 0 ? p.indexOf("aop-inbox-workspace") + "aop-inbox-workspace".length : 0);
-    if (workspaceRel.split("/").some((part) => part.startsWith(".") && part.length > 1 && part !== "..")) {
-      raise("high", `${base} is in a hidden location that tools load automatically`);
-    }
+  // Relative to the workspace root that actually contains it (computed by the policy engine);
+  // without that, every component of the absolute path is checked — stricter, never looser.
+  const rel = (workspaceRelative ?? p).replace(/\\/g, "/").toLowerCase();
+  if (zone === "workspace" && rel.split("/").some((part) => part.startsWith(".") && part !== "." && part !== "..")) {
+    raise("high", `${base} is in a hidden location that tools load automatically`);
   }
   if (zone === "workspace" && !DATA_EXTENSIONS.has(path.posix.extname(p))) {
     raise("medium", `Other tools may read ${base}, so it needs your review`);

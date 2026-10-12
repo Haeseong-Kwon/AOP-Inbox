@@ -230,3 +230,13 @@ describe("hidden workspace paths", () => {
   it.each(["project/.newtool/config.yml", "project/.somerc", "project/sub/.config/tool.json", ".hidden.md"])("%s is blocked", (p) => expect(ev(p)).toBe("blocked"));
   it("visible data files stay low", () => expect(ev("project/notes/plan.md")).toBe("auto"));
 });
+
+describe("hidden-path check uses the real workspace root", () => {
+  it("applies to extra workspaces and nested folders named like the workspace", () => {
+    const paths = { home: "/Users/you", workspace: "/Users/you/aop-inbox-workspace", stateDir: "/Users/you/.aop-inbox", extraWorkspaces: ["/Users/you/code/proj"], mode: "lexical" as const };
+    const ev = (p: string) => evaluateStep(step({ id: "c", type: "file_create", change: { kind: "file_write", path: p, content: "x" } as never }), spec([]), { autoRunLow: true, paths }).decision;
+    expect(ev("/Users/you/code/proj/.envrc")).toBe("blocked");
+    expect(ev("/Users/you/code/proj/notes.md")).toBe("auto");
+    expect(ev("nested/aop-inbox-workspace/.envrc")).toBe("blocked");
+  });
+});

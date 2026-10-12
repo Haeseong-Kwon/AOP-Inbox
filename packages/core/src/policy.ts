@@ -1,7 +1,8 @@
 import { analyzeArgv, analyzeCommand, maxRisk, referencesSensitivePath } from "./command";
 import type { FailureCode } from "./errors";
 import { changeRisk } from "./changes";
-import { classifyPath, PREVIEW_PATHS, ZONE_RISK, type PathContext, type PathZone } from "./paths";
+import nodePath from "node:path";
+import { classifyPath, isWithin, PREVIEW_PATHS, resolvePath, ZONE_RISK, type PathContext, type PathZone } from "./paths";
 import type { Risk, SetupSpec, SetupStep } from "./setup-spec";
 
 /**
@@ -110,7 +111,17 @@ export function evaluateStep(step: SetupStep, spec: Pick<SetupSpec, "suspiciousI
   if (step.change) {
     const c = classifyPath(step.change.path, paths);
     writes.push({ path: step.change.path, ...c });
-    const content = changeRisk(step.change, c.zone, c.resolved);
+    let rel: string | undefined;
+    if (c.zone === "workspace") {
+      for (const ws of [paths.workspace, ...(paths.extraWorkspaces ?? [])]) {
+        const root = resolvePath(ws, paths, "/");
+        if (isWithin(c.resolved, root)) {
+          rel = nodePath.relative(root, c.resolved);
+          break;
+        }
+      }
+    }
+    const content = changeRisk(step.change, c.zone, c.resolved, rel);
     risk = maxRisk(risk, content.risk);
     reasons.push(...content.reasons);
   }
