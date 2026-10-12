@@ -4,7 +4,7 @@ import { embedMany, generateText, Output, streamText, type LanguageModelUsage } 
 import { aiUsage, EMBEDDING_DIMENSIONS } from "@/db/schema";
 import { db } from "@/lib/db";
 import { errorMessage, log } from "@/lib/log";
-import { getAIConfig, type AIConfig, type ModelProfile } from "./config";
+import { getAIConfig, type AIConfig } from "./config";
 import { mockAnalyze, mockEmbed } from "./mock";
 import { analyzeItemInstructions, analyzeItemPrompt, type AnalyzeItemInput } from "./prompts/analyze-item";
 import { askInboxInstructions, askInboxPrompt, type AskContextItem } from "./prompts/ask-inbox";

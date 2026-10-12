@@ -8,7 +8,8 @@ export class ApiError extends Error {
 
 async function handle<T>(res: Response): Promise<T> {
   if (res.status === 401) {
-    if (typeof window !== "undefined") window.location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- session expired: full reload to the login page
+    if (typeof window !== "undefined") window.location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
     throw new ApiError(401, "Please sign in again.");
   }
   if (!res.ok) {

@@ -137,6 +137,9 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "ss01", "cv11";
+    /* Korean wraps at word boundaries, not mid-syllable-cluster */
+    word-break: keep-all;
+    overflow-wrap: anywhere;
   }
   ::selection {
     background: var(--signal-soft);
