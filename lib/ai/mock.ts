@@ -52,10 +52,10 @@ function firstSentences(text: string, maxChars: number): string {
   return out || clip(text.replace(/\s+/g, " ").trim(), maxChars);
 }
 
-const COMMAND_LINE = /(^|\n)\s*(?:\$\s*)?(npm|npx|pnpm|yarn|bun|brew|pip3?|pipx|uvx?|claude|git|curl|wget|node|python3?|mkdir|docker|cargo|go)\s+\S+/i;
+const COMMAND_LINE = /(^|\n)\s*(?:\$\s*)?(npm|npx|pnpm|yarn|bun|brew|pip3?|pipx|uvx?|claude|git|curl|wget|node|python3?|mkdir|docker|cargo|go|echo|sudo|bash|sh|zsh|eval|env|cat|rm|chmod)\s+\S+/i;
 const NEEDS_PERSON = /(api[ _-]?key|sign[ -]?up|회원가입|결제|subscribe|log ?in|로그인|oauth|발급|create an account|billing)/i;
 const GUIDE_GATE = /(comment|댓글).{0,40}(guide|가이드|dm|디엠|보내)/i;
-const DO_VERBS = /\b(try|set up|setup|configure|install|build|create|add|enable|follow these|step \d)\b|해보세요|설정|만들어|설치|따라/i;
+const DO_VERBS = /(^|[.!?:\n]\s*)(try|set up|setup|configure|install|build|create|add|enable|follow these|step \d)\b|해보세요|설정하세요|만들어 보세요|설치하세요|따라 하세요/i;
 const REFERENCE = /(awesome|list of|alternatives|comparison|vs\.?|repo|library|libraries|도구 모음|레퍼런스)/i;
 
 /** Heuristic intent for offline mode; the real classifier is the LLM. */
@@ -72,7 +72,7 @@ export function mockIntent(text: string): Pick<ItemAnalysis, "contentIntent" | "
       setupSpecCandidate: true,
     };
   }
-  if (NEEDS_PERSON.test(text) && DO_VERBS.test(text)) {
+  if (NEEDS_PERSON.test(text) && (DO_VERBS.test(text) || /\b(then|first|next)\b|sign[ -]?up|회원가입|create an? (api key|account)/i.test(text))) {
     return { contentIntent: "requires_user", actionability: { score: 0.55, reason: "Needs an account, key or payment from you." }, executable: false, setupSpecCandidate: true };
   }
   if (DO_VERBS.test(text)) return { contentIntent: "actionable", actionability: { score: 0.5, reason: "Describes something to try by hand." }, executable: false, setupSpecCandidate: false };

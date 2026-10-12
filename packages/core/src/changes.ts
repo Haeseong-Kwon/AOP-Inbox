@@ -39,12 +39,21 @@ const ABS_PATH = String.raw`(?:\$HOME|~)?/[A-Za-z0-9_./-]*`;
 const TOOL_LOCATION = new RegExp(String.raw`^export ([A-Z][A-Z0-9_]*_(?:HOME|DIR|ROOT|INSTALL)|GOPATH)="?(${ABS_PATH})"?$`);
 const PATH_EXPORT = new RegExp(String.raw`^export PATH="((?:${ABS_PATH}|\$PATH)(?::(?:${ABS_PATH}|\$PATH))*)"$`);
 
+// Tools execute binaries from these locations, so they must not point anywhere content can write to:
+// the AOP Inbox workspace (cloned repos land there), temp folders, Downloads/Desktop.
+const UNTRUSTED_LOCATION = /(^|\/)aop-inbox-workspace(\/|$)|^\/(tmp|private|var|dev|volumes)(\/|$)|^(\$home|~)\/(downloads|desktop)(\/|$)/i;
+
+function trustedLocation(seg: string): boolean {
+  const parts = seg.split("/");
+  return !parts.includes("..") && !parts.includes(".") && !UNTRUSTED_LOCATION.test(seg);
+}
+
 function safeProfileLine(line: string): boolean {
   const tool = line.match(TOOL_LOCATION);
-  if (tool) return !tool[2].split("/").includes("..");
+  if (tool) return trustedLocation(tool[2]);
   const p = line.match(PATH_EXPORT);
   if (!p) return false;
-  return p[1].split(":").every((seg) => seg === "$PATH" || (!seg.split("/").includes("..") && !seg.split("/").includes(".")));
+  return p[1].split(":").every((seg) => seg === "$PATH" || trustedLocation(seg));
 }
 
 export interface ChangeRisk {

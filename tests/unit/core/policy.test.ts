@@ -212,3 +212,14 @@ describe("change risk allowlists", () => {
     expect(ev({ kind: "file_write", path: "project/notes.md", content: "hi" }).decision).toBe("auto");
   });
 });
+
+describe("tool locations must be trusted", () => {
+  const ev = (line: string) => evaluateStep(step({ id: "c", type: "config_write", change: { kind: "append_line", path: "~/.zshrc", line } as never }), spec([]), { autoRunLow: true });
+  it.each([
+    "export JAVA_HOME=/tmp/evil",
+    'export GOROOT="$HOME/aop-inbox-workspace/cloned/go"',
+    'export PATH="$HOME/aop-inbox-workspace/bin:$PATH"',
+    'export PATH="/private/var/folders/x:$PATH"',
+    'export NVM_DIR="$HOME/Downloads/nvm"',
+  ])("%s is blocked", (line) => expect(ev(line).decision).toBe("blocked"));
+});

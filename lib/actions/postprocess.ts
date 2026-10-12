@@ -1,5 +1,10 @@
 import {
+  analyzeCommand,
   ChangeSchema,
+  changeRisk,
+  classifyPath,
+  maxRisk,
+  PREVIEW_PATHS,
   containsSecret,
   parseCommand,
   redactSecrets,
@@ -49,6 +54,21 @@ function corpus(facts: ExtractedFacts): string {
 }
 
 const MIN_QUOTE = 6;
+
+function draftChange(c: NonNullable<StepDraft["change"]>): SetupStep["change"] | null {
+  try {
+    const candidate =
+      c.kind === "json_merge"
+        ? { kind: "json_merge", path: c.path, value: JSON.parse(c.jsonValue ?? "null") }
+        : c.kind === "file_write"
+          ? { kind: "file_write", path: c.path, content: c.content ?? "" }
+          : { kind: "append_line", path: c.path, line: c.line ?? "" };
+    const parsed = ChangeSchema.safeParse(candidate);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
 
 type McpDef = NonNullable<SetupStep["mcp"]>;
 
@@ -157,13 +177,16 @@ function convertStep(d: StepDraft, ctx: { allowed: Set<string>; text: string; id
     evidence = { quote: redactSecrets(d.evidenceQuote.trim()).slice(0, 500), source: d.evidenceSource ?? undefined, timestampSec: d.evidenceTimestampSec ?? undefined };
   } else if (d.evidenceQuote) ctx.report.droppedEvidence.push(id);
 
-  // Commands: verbatim from facts only.
+  // Commands: verbatim from facts only. A dropped command still sets the step's risk floor,
+  // so a manual fallback never asks the person to do something we'd have blocked.
   const commands: string[] = [];
   let hadSecret = false;
+  let riskFloor: SetupStep["risk"] = d.risk;
   for (const raw of d.commands) {
     const c = norm(raw);
     if (!ctx.allowed.has(c)) {
       ctx.report.droppedCommands.push(c);
+      riskFloor = maxRisk(riskFloor, analyzeCommand(c).risk);
       continue;
     }
     if (containsSecret(c)) {
@@ -183,6 +206,13 @@ function convertStep(d: StepDraft, ctx: { allowed: Set<string>; text: string; id
 
   // Structured file change: the payload itself must appear in the facts, not just some quote.
   let change: SetupStep["change"];
+  if (d.change) {
+    const attempted = draftChange(d.change);
+    if (attempted) {
+      const where = classifyPath(attempted.path, PREVIEW_PATHS);
+      riskFloor = maxRisk(riskFloor, changeRisk(attempted, where.zone, where.resolved).risk);
+    }
+  }
   if (d.change && evidence && changeBacked(d.change, ctx.text)) {
     let candidate: unknown = null;
     if (d.change.kind === "json_merge") {
@@ -211,7 +241,7 @@ function convertStep(d: StepDraft, ctx: { allowed: Set<string>; text: string; id
     // Display only — executors never use `target`; writes come from `change` / analyzed commands.
     target: d.target ? redactSecrets(d.target).slice(0, 400) : undefined,
     needsUser: d.needsUser || hadSecret,
-    risk: d.risk,
+    risk: riskFloor,
     confidence: Math.max(0, Math.min(1, d.confidence)),
     evidence,
     verify,

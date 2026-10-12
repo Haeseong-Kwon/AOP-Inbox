@@ -40,19 +40,7 @@ export async function createPairingCode(userId: string): Promise<{ code: string;
 
 const safeEqual = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-// Load shedding only (per process) — security comes from per-code attempt limits and code entropy.
-let windowStart = Date.now();
-let windowCount = 0;
-function overloaded(): boolean {
-  if (Date.now() - windowStart > 60_000) {
-    windowStart = Date.now();
-    windowCount = 0;
-  }
-  return ++windowCount > 300;
-}
-
 export async function pairDevice(input: { code: string; name: string; platform: string; arch: string; agentVersion: string }): Promise<{ deviceId: string; token: string }> {
-  if (overloaded()) throw new HttpError(429, "Too many pairing requests right now. Try again in a minute.");
   const normalized = normalizeCode(input.code);
   const lookupId = normalized.slice(0, LOOKUP_LEN);
   const secretHash = sha(normalized.slice(LOOKUP_LEN));
