@@ -7,6 +7,8 @@ import { ANALYZE_ITEM_VERSION } from "@/lib/ai/prompts/analyze-item";
 import { slugify, type ItemAnalysis } from "@/lib/ai/schemas";
 import { db } from "@/lib/db";
 import { enqueue, runJobs, type Job } from "@/lib/jobs/queue";
+import { ACTION_INTENTS, enqueueActionExtraction, extractActionsForItem } from "@/lib/actions/pipeline";
+import { syncItemActionState } from "@/lib/actions/state";
 import { errorMessage, log } from "@/lib/log";
 import { enrichSource } from "@/lib/sources/enrich";
 import type { NormalizedSource } from "@/lib/sources/normalize";
@@ -148,6 +150,10 @@ export async function applyAnalysis(item: Item, analysis: ItemAnalysis, model: s
       whyItMatters: analysis.whyItMatters,
       importanceScore: analysis.importanceScore,
       language: analysis.language,
+      contentIntent: analysis.contentIntent,
+      actionabilityScore: analysis.actionability.score,
+      actionabilityReason: analysis.actionability.reason || null,
+      whatYouCanDo: analysis.whatYouCanDo || null,
       analysisHash: inputHash,
       analysisModel: model,
       processingStage: "embed",
@@ -175,6 +181,7 @@ export async function knowledgeDocument(item: Item): Promise<string> {
     tagRows.length > 0 && `Tags: ${tagRows.map((t) => t.name).join(", ")}`,
     item.creatorName,
     item.description?.slice(0, 500),
+    item.actionText && `Actions: ${item.actionText.slice(0, 1500)}`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -214,6 +221,23 @@ export async function processItem(job: Job): Promise<void> {
   if (item.processingStage === "enrich") item = await enrich(item);
   if (item.processingStage === "analyze") item = await analyze(item);
   if (item.processingStage === "embed") await embed(item);
+  // Action layer: only content the analyzer judged actionable gets the (more expensive) extraction.
+  if (item.contentIntent && ACTION_INTENTS.has(item.contentIntent)) {
+    await db.update(items).set({ actionState: "analyzing" }).where(and(eq(items.id, item.id), isNull(items.actionState)));
+    await enqueueActionExtraction(item.id);
+  } else {
+    await syncItemActionState(item.id);
+  }
+}
+
+/** Re-embed after the action digest changed, without touching processing status. */
+export async function reembedItem(itemId: string): Promise<void> {
+  const item = await loadItem(itemId);
+  if (item && item.processingStatus === "completed") await embed(item);
+}
+
+async function extractActions(job: Job): Promise<void> {
+  if (job.itemId) await extractActionsForItem(job.itemId);
 }
 
 async function markFailed(job: Job, error: unknown) {
@@ -225,8 +249,24 @@ async function markFailed(job: Job, error: unknown) {
     .where(eq(items.id, job.itemId));
 }
 
+/** Handlers registered by other modules (follow-ups, maintenance) without import cycles. */
+const extraHandlers: Partial<Record<Job["type"], (job: Job) => Promise<void>>> = {};
+export function registerJobHandler(type: Job["type"], handler: (job: Job) => Promise<void>): void {
+  extraHandlers[type] = handler;
+}
+
 export function drainQueue(budgetMs?: number): Promise<number> {
-  return runJobs({ handlers: { process_item: processItem }, onFinalFailure: markFailed, budgetMs });
+  return runJobs({
+    handlers: { process_item: processItem, extract_actions: extractActions, ...extraHandlers },
+    onFinalFailure: async (job, error) => {
+      if (job.type === "process_item") await markFailed(job, error);
+      if (job.type === "extract_actions" && job.itemId) {
+        log.error("actions.extraction_failed", { itemId: job.itemId, error: errorMessage(error) });
+        await db.update(items).set({ actionState: null }).where(eq(items.id, job.itemId));
+      }
+    },
+    budgetMs,
+  });
 }
 
 /** Re-run analysis for an item (user hit "Retry analysis" or edited their note). */
