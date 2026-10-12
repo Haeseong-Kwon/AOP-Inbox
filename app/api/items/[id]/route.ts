@@ -26,7 +26,10 @@ export const PATCH = withUser<Ctx>(async (req, user, ctx) => {
   return NextResponse.json(await getItem(user.id, id));
 });
 
-export const DELETE = withUser<Ctx>(async (_req, user, ctx) => {
-  if (!(await deleteItem(user.id, await idOf(ctx)))) throw new HttpError(404, "This item doesn't exist anymore.");
+export const DELETE = withUser<Ctx>(async (req, user, ctx) => {
+  // Summary, embedding, tags, setup specs, notifications and feedback go with the item (FK cascade).
+  // The execution ledger is kept (item link set to null, title preserved) unless the person asks to purge it.
+  const purgeHistory = new URL(req.url).searchParams.get("purgeHistory") === "1";
+  if (!(await deleteItem(user.id, await idOf(ctx), { purgeHistory }))) throw new HttpError(404, "This item doesn't exist anymore.");
   return new NextResponse(null, { status: 204 });
 });

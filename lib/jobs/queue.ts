@@ -19,15 +19,16 @@ const BASE_BACKOFF_SECONDS = 15;
 type Executor = Pick<typeof db, "execute">;
 
 export async function enqueue(
-  input: { type: JobType; itemId?: string; payload?: Record<string, unknown>; idempotencyKey: string; maxAttempts?: number },
+  input: { type: JobType; itemId?: string; payload?: Record<string, unknown>; idempotencyKey: string; maxAttempts?: number; runAfter?: Date },
   executor: Executor = db,
 ): Promise<void> {
+  const runAfter = input.runAfter ?? new Date();
   // Same key while pending/processing → no-op. Same key after it finished → re-arm it.
   await executor.execute(sql`
-    insert into processing_jobs (type, item_id, payload, idempotency_key, max_attempts)
-    values (${input.type}, ${input.itemId ?? null}, ${JSON.stringify(input.payload ?? {})}::jsonb, ${input.idempotencyKey}, ${input.maxAttempts ?? 3})
+    insert into processing_jobs (type, item_id, payload, idempotency_key, max_attempts, run_after)
+    values (${input.type}, ${input.itemId ?? null}, ${JSON.stringify(input.payload ?? {})}::jsonb, ${input.idempotencyKey}, ${input.maxAttempts ?? 3}, ${runAfter.toISOString()})
     on conflict (idempotency_key) do update
-      set status = 'pending', attempts = 0, run_after = now(), last_error = null, locked_at = null, completed_at = null, updated_at = now()
+      set status = 'pending', attempts = 0, run_after = excluded.run_after, payload = excluded.payload, last_error = null, locked_at = null, completed_at = null, updated_at = now()
       where processing_jobs.status in ('completed', 'failed')`);
 }
 

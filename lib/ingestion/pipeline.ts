@@ -228,6 +228,8 @@ export async function processItem(job: Job): Promise<void> {
   } else {
     await syncItemActionState(item.id);
   }
+  // A creator guide finished processing → its parent's setup is re-derived with the guide as evidence.
+  if (item.parentItemId) await enqueueActionExtraction(item.parentItemId);
 }
 
 /** Re-embed after the action digest changed, without touching processing status. */
@@ -255,7 +257,11 @@ export function registerJobHandler(type: Job["type"], handler: (job: Job) => Pro
   extraHandlers[type] = handler;
 }
 
-export function drainQueue(budgetMs?: number): Promise<number> {
+export async function drainQueue(budgetMs?: number): Promise<number> {
+  // Follow-ups/maintenance register themselves; imported lazily to keep the module graph acyclic.
+  const followups = await import("@/lib/followups");
+  followups.registerFollowUpHandlers();
+  await followups.ensureMaintenanceScheduled();
   return runJobs({
     handlers: { process_item: processItem, extract_actions: extractActions, ...extraHandlers },
     onFinalFailure: async (job, error) => {

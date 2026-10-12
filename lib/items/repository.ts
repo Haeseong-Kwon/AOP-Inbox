@@ -159,7 +159,11 @@ export async function updateItem(userId: string, id: string, patch: UpdateItemRe
   return { noteChanged: patch.userNote !== undefined && (values.userNote ?? null) !== (current.userNote ?? null) };
 }
 
-export async function deleteItem(userId: string, id: string): Promise<boolean> {
+export async function deleteItem(userId: string, id: string, opts: { purgeHistory?: boolean } = {}): Promise<boolean> {
+  if (opts.purgeHistory) {
+    const { executionJobs } = await import("@/db/schema");
+    await db.delete(executionJobs).where(and(eq(executionJobs.userId, userId), eq(executionJobs.itemId, id)));
+  }
   const deleted = await db.delete(items).where(and(eq(items.userId, userId), eq(items.id, id))).returning({ id: items.id });
   return deleted.length > 0;
 }

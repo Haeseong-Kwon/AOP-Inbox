@@ -47,7 +47,7 @@ describe("ingestion pipeline", () => {
       input: "https://www.instagram.com/reel/AGENTS1/",
       note: "Run several Claude coding agents in parallel, each in its own git worktree",
     });
-    expect(await drainQueue(10_000)).toBe(1);
+    expect(await drainQueue(10_000)).toBeGreaterThanOrEqual(1); // + the hourly maintenance job
 
     const item = await getItem(userId, itemId);
     expect(item?.processingStatus).toBe("completed");
