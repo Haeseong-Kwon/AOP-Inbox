@@ -11,7 +11,7 @@ export async function resetDatabase(): Promise<string> {
     await runMigrations(process.env.DATABASE_URL!);
     migrated = true;
   }
-  await db.execute(sql`truncate table "user", processing_jobs, ai_usage, auth_throttle, action_analysis_cache restart identity cascade`);
+  await db.execute(sql`truncate table "user", processing_jobs, ai_usage, action_analysis_cache restart identity cascade`);
   const id = "test-user";
   await db.insert(user).values({ id, name: "Test", email: "test@aop.local", onboardedAt: new Date() });
   return id;

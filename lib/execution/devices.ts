@@ -1,7 +1,7 @@
 import "server-only";
-import { createHash, randomBytes, randomInt } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
-import { authThrottle, devicePairings, devices, type Device } from "@/db/schema";
+import { devicePairings, devices, type Device } from "@/db/schema";
 import { db } from "@/lib/db";
 import { HttpError } from "@/lib/http";
 
@@ -20,49 +20,44 @@ export function normalizeCode(code: string): string {
   return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+const LOOKUP_LEN = 4;
+const SECRET_LEN = 6;
+const randomChars = (n: number) => Array.from({ length: n }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
+
+/**
+ * Code = 4-char public lookup id + 6-char secret ("ABCD-EFGHJK").
+ * Attempts are counted per code: five wrong secrets burn that one code.
+ * No shared or global counter, so nobody can lock other people out.
+ */
 export async function createPairingCode(userId: string): Promise<{ code: string; expiresAt: Date }> {
-  const raw = Array.from({ length: 6 }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
+  const lookupId = randomChars(LOOKUP_LEN);
+  const secret = randomChars(SECRET_LEN);
   const expiresAt = new Date(Date.now() + PAIRING_TTL_MS);
-  await db.insert(devicePairings).values({ userId, codeHash: sha(raw), expiresAt });
-  return { code: `${raw.slice(0, 3)}-${raw.slice(3)}`, expiresAt };
+  await db.insert(devicePairings).values({ userId, lookupId, codeHash: sha(secret), expiresAt });
+  return { code: `${lookupId}-${secret}`, expiresAt };
 }
 
-// Attempt windows in Postgres: one atomic increment-and-check per request (no check-then-act race),
-// shared across restarts and instances. Counting attempts (not failures) caps guessing outright.
-const PER_CLIENT_ATTEMPTS = 10;
-const GLOBAL_ATTEMPTS = 200; // ≈2·10⁻⁷ chance per window of hitting a live 31⁶ code
+const safeEqual = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-async function consumeAttempt(key: string): Promise<number> {
-  const [row] = await db
-    .insert(authThrottle)
-    .values({ key, count: 1, windowStart: new Date() })
-    .onConflictDoUpdate({
-      target: authThrottle.key,
-      set: {
-        count: sql`case when ${authThrottle.windowStart} < now() - interval '10 minutes' then 1 else ${authThrottle.count} + 1 end`,
-        windowStart: sql`case when ${authThrottle.windowStart} < now() - interval '10 minutes' then now() else ${authThrottle.windowStart} end`,
-      },
-    })
-    .returning({ count: authThrottle.count });
-  return row.count;
-}
-
-export async function pairDevice(
-  input: { code: string; name: string; platform: string; arch: string; agentVersion: string },
-  client = "unknown",
-): Promise<{ deviceId: string; token: string }> {
-  // Global first, so a spoofed or rotating client identity can't escape the overall cap.
-  if ((await consumeAttempt("pair:global")) > GLOBAL_ATTEMPTS || (await consumeAttempt(`pair:client:${client}`)) > PER_CLIENT_ATTEMPTS) {
-    throw new HttpError(429, "Too many pairing attempts. Create a new code and try again in a few minutes.");
-  }
-  const codeHash = sha(normalizeCode(input.code));
+export async function pairDevice(input: { code: string; name: string; platform: string; arch: string; agentVersion: string }): Promise<{ deviceId: string; token: string }> {
+  const normalized = normalizeCode(input.code);
+  const lookupId = normalized.slice(0, LOOKUP_LEN);
+  const secretHash = sha(normalized.slice(LOOKUP_LEN));
   const result = await db.transaction(async (tx) => {
     const [pairing] = await tx
       .select()
       .from(devicePairings)
-      .where(and(eq(devicePairings.codeHash, codeHash), isNull(devicePairings.usedAt), gt(devicePairings.expiresAt, new Date())))
+      .where(and(eq(devicePairings.lookupId, lookupId), isNull(devicePairings.usedAt), gt(devicePairings.expiresAt, new Date())))
       .for("update");
     if (!pairing || pairing.attempts >= MAX_PAIR_ATTEMPTS) return null;
+    if (!safeEqual(pairing.codeHash, secretHash)) {
+      const attempts = pairing.attempts + 1;
+      await tx
+        .update(devicePairings)
+        .set({ attempts, ...(attempts >= MAX_PAIR_ATTEMPTS ? { usedAt: new Date() } : {}) })
+        .where(eq(devicePairings.id, pairing.id));
+      return null;
+    }
     const token = `aopd_${randomBytes(32).toString("base64url")}`;
     const [device] = await tx
       .insert(devices)
@@ -71,9 +66,7 @@ export async function pairDevice(
     await tx.update(devicePairings).set({ usedAt: new Date() }).where(eq(devicePairings.id, pairing.id));
     return { deviceId: device.id, token };
   });
-  if (!result) {
-    throw new HttpError(401, "That code is invalid or has expired. Create a new one in Settings → Local Agent.");
-  }
+  if (!result) throw new HttpError(401, "That code is invalid or has expired. Create a new one in Settings → Local Agent.");
   return result;
 }
 

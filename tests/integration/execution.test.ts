@@ -40,24 +40,29 @@ describe("pairing", () => {
     const { code } = await createPairingCode(userId);
     await pairDevice({ code, name: "a", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" });
     await expect(pairDevice({ code, name: "b", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" })).rejects.toThrow(/invalid or has expired/);
-    await expect(pairDevice({ code: "ZZZ-ZZZ", name: "c", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" })).rejects.toThrow();
+    await expect(pairDevice({ code: "ZZZZ-ZZZZZZ", name: "c", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" })).rejects.toThrow();
   });
 });
 
-describe("pairing throttle", () => {
-  it("locks a client out after repeated attempts, even for a valid code", async () => {
-    for (let i = 0; i < 10; i++) {
-      await expect(pairDevice({ code: "QQQ-QQQ", name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" }, "1.2.3.4")).rejects.toThrow();
-    }
+describe("pairing brute-force resistance", () => {
+  it("burns a code after five wrong secrets, without affecting other codes", async () => {
     const { code } = await createPairingCode(userId);
-    await expect(pairDevice({ code, name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" }, "1.2.3.4")).rejects.toThrow(/Too many/);
-    await expect(pairDevice({ code, name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" }, "5.6.7.8")).resolves.toMatchObject({ token: expect.any(String) });
+    const [lookup] = code.split("-");
+    for (let i = 0; i < 5; i++) {
+      await expect(pairDevice({ code: `${lookup}-ZZZZZZ`, name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" })).rejects.toThrow();
+    }
+    // The right secret no longer works for the burned code…
+    await expect(pairDevice({ code, name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" })).rejects.toThrow(/invalid or has expired/);
+    // …but a fresh code for the same (or any) user is unaffected.
+    const fresh = await createPairingCode(userId);
+    await expect(pairDevice({ code: fresh.code, name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" })).resolves.toMatchObject({ token: expect.any(String) });
   });
 
-  it("counts concurrent attempts atomically", async () => {
-    const attempts = Array.from({ length: 25 }, () => pairDevice({ code: "WWW-WWW", name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" }, "9.9.9.9").catch((e: Error) => e.message));
-    const results = await Promise.all(attempts);
-    expect(results.filter((r) => /Too many/.test(String(r))).length).toBe(15);
+  it("counts concurrent wrong guesses against the same code", async () => {
+    const { code } = await createPairingCode(userId);
+    const [lookup] = code.split("-");
+    await Promise.all(Array.from({ length: 12 }, () => pairDevice({ code: `${lookup}-YYYYYY`, name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" }).catch(() => null)));
+    await expect(pairDevice({ code, name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" })).rejects.toThrow();
   });
 });
 

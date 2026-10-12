@@ -419,18 +419,14 @@ export const devicePairings = pgTable("device_pairings", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  /** Public half of the code: finds the pairing without revealing anything. */
+  lookupId: text("lookup_id"),
+  /** sha256 of the secret half. */
   codeHash: text("code_hash").notNull().unique(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
   attempts: integer("attempts").notNull().default(0),
   createdAt: createdAt(),
-});
-
-/** Fixed-window counters for unauthenticated endpoints (pairing). Shared across instances. */
-export const authThrottle = pgTable("auth_throttle", {
-  key: text("key").primaryKey(),
-  count: integer("count").notNull().default(0),
-  windowStart: timestamp("window_start", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const executionJobs = pgTable(

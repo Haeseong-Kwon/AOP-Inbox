@@ -2,6 +2,7 @@ export * from "./setup-spec";
 export * from "./command";
 export * from "./paths";
 export * from "./policy";
+export * from "./changes";
 export * from "./state";
 export * from "./errors";
 export * from "./redact";

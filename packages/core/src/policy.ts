@@ -1,5 +1,6 @@
 import { analyzeArgv, analyzeCommand, maxRisk, referencesSensitivePath } from "./command";
 import type { FailureCode } from "./errors";
+import { changeRisk } from "./changes";
 import { classifyPath, PREVIEW_PATHS, ZONE_RISK, type PathContext, type PathZone } from "./paths";
 import type { Risk, SetupSpec, SetupStep } from "./setup-spec";
 
@@ -109,6 +110,9 @@ export function evaluateStep(step: SetupStep, spec: Pick<SetupSpec, "suspiciousI
   if (step.change) {
     const c = classifyPath(step.change.path, paths);
     writes.push({ path: step.change.path, ...c });
+    const content = changeRisk(step.change, c.zone);
+    risk = maxRisk(risk, content.risk);
+    reasons.push(...content.reasons);
   }
   if (step.type === "mcp_add") risk = maxRisk(risk, mcpRisk(step, reasons));
 
