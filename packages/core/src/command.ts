@@ -124,13 +124,16 @@ export function parseCommand(input: string): ParsedCommand {
       let op = c;
       while (input[i + 1] === ">" || input[i + 1] === "&" || input[i + 1] === "<") op += input[++i];
       pendingRedirect = op;
+    } else if (c === "#" && !inToken) {
+      // A shell would ignore the rest of the line; we refuse to guess.
+      return { ...result, error: "contains a shell comment" };
     } else if (c === "$" || c === "`") {
       tokenDynamic = true;
       if (c === "`" || input[i + 1] === "(") result.substitution = true;
       token += c;
       inToken = true;
     } else {
-      if (c === "*" || c === "?" || (c === "~" && !inToken && input[i + 1] && /[A-Za-z]/.test(input[i + 1]))) tokenDynamic = true;
+      if (c === "*" || c === "?" || c === "[" || c === "{" || c === "!" || (c === "~" && !inToken && input[i + 1] && /[A-Za-z]/.test(input[i + 1]))) tokenDynamic = true;
       token += c;
       inToken = true;
     }
@@ -163,10 +166,15 @@ const SYSTEM_TOOLS = new Set([
   "iptables", "ufw", "ifconfig", "route", "crontab", "at", "visudo",
 ]);
 const EXFIL_TOOLS = new Set(["scp", "sftp", "rsync", "nc", "ncat", "netcat", "socat", "telnet", "ftp", "ssh", "ssh-add", "ssh-keygen"]);
-const READ_ONLY = new Set(["echo", "pwd", "which", "type", "whoami", "uname", "date", "ls", "cat", "head", "tail", "wc", "grep", "env", "printenv", "test", "true", "false", "sw_vers"]);
+// Commands with no file arguments and no way to launch others.
+const READ_ONLY = new Set(["echo", "pwd", "which", "whoami", "uname", "date", "true", "false", "sw_vers"]);
+// Read files: low only when every path argument stays inside the workspace (output is reported back).
+const FILE_READERS = new Set(["ls", "cat", "head", "tail", "wc", "grep", "rg", "less", "more", "stat", "file", "diff"]);
+// Run another program given as arguments — the inner program is unknowable here.
+const WRAPPERS = new Set(["env", "xargs", "nohup", "time", "timeout", "gtimeout", "nice", "renice", "command", "exec", "builtin", "caffeinate", "script", "watch", "parallel", "stdbuf", "unbuffer", "arch", "open"]);
 const NODE_PMS = new Set(["npm", "pnpm", "yarn", "bun"]);
 // Commands classified by the dedicated checks at the top of analyzeSegment.
-const HANDLED_ABOVE = new Set(["rm", "curl", "wget", "chmod", "chown", "security", "eval", "source", ".", "base64", "xxd"]);
+const HANDLED_ABOVE = new Set(["rm", "curl", "wget", "chmod", "chown", "security", "eval", "source", ".", "base64", "xxd", "find", "defaults", "printenv"]);
 const OFFICIAL_REGISTRIES = ["https://registry.npmjs.org", "https://registry.yarnpkg.com", "https://pypi.org"];
 
 /** Paths that must never be read or written by an automated step. */
@@ -225,6 +233,9 @@ function flagValue(argv: string[], ...names: string[]): string | undefined {
 
 const positional = (argv: string[]) => argv.slice(1).filter((a) => !a.startsWith("-"));
 
+/** A path argument that provably stays inside the working directory (relative, no `..`, no `~`). */
+const staysLocal = (arg: string) => !arg.startsWith("/") && !arg.startsWith("~") && !arg.split("/").includes("..");
+
 function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) {
   const name = commandName(seg.argv);
   const args = seg.argv.slice(1);
@@ -249,6 +260,14 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
   }
   if (name === "eval" || name === "source" || name === ".") raise("high", "Evaluates code built at runtime", true);
   if (SHELLS.has(name) && args.some((a) => a === "-c" || a.startsWith("-c"))) raise("high", "Runs a nested shell command (sh -c)");
+  if (SHELLS.has(name) || (INTERPRETERS.has(name) && name !== "node" && name !== "python" && name !== "python3")) {
+    if (!(args.length === 1 && /^(--version|-v|-V)$/.test(args[0]))) raise("high", `Runs code with ${name}`);
+  }
+  if (WRAPPERS.has(name)) raise("high", `Launches another program through ${name}, so what actually runs isn't checked`);
+  if (name === "find" && args.some((a) => /^-(exec|execdir|ok|okdir|delete|fprint)/.test(a))) raise("high", "find with -exec/-delete runs commands or deletes files");
+  else if (name === "find") raise(args.every((a) => a.startsWith("-") || staysLocal(a)) ? "low" : "medium", "Searches files");
+  if (name === "defaults" && args[0] !== "read") raise("high", "Changes macOS system preferences");
+  if (name === "printenv") raise("high", "Prints environment variables, which often hold secrets");
   if (INTERPRETERS.has(name) && args.some((a) => a === "-e" || a === "-c" || a === "--eval")) raise("high", `Runs inline ${name} code`);
 
   // Pipe into an interpreter: curl … | sh, base64 -d | bash, etc.
@@ -284,7 +303,7 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
     const uploads = args.some((a) => /^(-d|--data.*|-F|--form.*|-T|--upload-file|--post-file|--post-data|-X)$/.test(a.split("=")[0]));
     if (uploads) raise("high", "Sends data to a remote server", true);
     if (args.some((a) => a.startsWith("@") && referencesSensitivePath(a))) raise("high", "Uploads a credential file", true);
-    const output = flagValue(seg.argv, "-o", "--output", "-O", "--output-document");
+    const output = flagValue(seg.argv, "-o", "--output", "--output-document");
     if (output) out.writes.push(output);
     raise("medium", "Downloads from the internet");
   }
@@ -293,6 +312,11 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
     out.kind = "package_install";
     const global = args.includes("-g") || args.includes("--global") || args[0] === "global";
     const registry = flagValue(seg.argv, "--registry");
+    const prefix = flagValue(seg.argv, "--prefix", "-C", "--dir", "--cwd", "--global-dir", "--modules-folder", "--cache");
+    if (prefix) {
+      out.writes.push(prefix);
+      if (!staysLocal(prefix)) raise("medium", "Installs into a folder outside the workspace");
+    }
     const pkgs = positional(seg.argv).slice(args[0] === "global" ? 2 : 1);
     out.installs.push(...pkgs);
     if (registry && !OFFICIAL_REGISTRIES.some((r) => registry.startsWith(r))) raise("high", `Installs from an unofficial registry (${registry})`);
@@ -317,6 +341,10 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
       out.kind = "package_install";
       const idx = args.indexOf("install");
       out.installs.push(...args.slice(idx + 1).filter((a) => !a.startsWith("-")));
+      const pipPkgs = args.slice(idx + 1).filter((a) => !a.startsWith("-"));
+      if (pipPkgs.some((p) => /^(https?:|git\+|file:|\.{0,2}\/)/.test(p))) {
+        raise(pipPkgs.some((p) => /^https?:/.test(p) && !/github\.com/.test(p)) ? "high" : "medium", "Installs from a URL or path instead of PyPI");
+      }
       const index = flagValue(seg.argv, "--index-url", "-i", "--extra-index-url");
       if (index && !OFFICIAL_REGISTRIES.some((r) => index.startsWith(r))) raise("high", "Installs from an unofficial package index");
       raise("medium", "Installs a Python package");
@@ -325,6 +353,16 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
     if (args[0] === "mcp" && args[1] === "add") {
       out.kind = "mcp_register";
       const scope = flagValue(seg.argv, "-s", "--scope") ?? "local";
+      // The server command after `--` runs later inside Claude Code; analyze it as a command of its own.
+      const dashdash = seg.argv.indexOf("--");
+      if (dashdash >= 0) {
+        const inner = analyzeArgv(seg.argv.slice(dashdash + 1));
+        if (inner.denied || inner.risk === "high") raise("high", `MCP server command: ${inner.reasons[0] ?? "not allowed"}`, inner.denied);
+        else if (inner.risk === "medium") raise("medium", `MCP server command: ${inner.reasons[0] ?? "runs code"}`);
+        else raise("medium", "The MCP server runs a program whenever Claude Code starts it");
+      } else if (!args.some((a) => /^https:\/\//.test(a))) {
+        raise("high", "MCP server command isn't separated with --, so it can't be checked");
+      }
       if (args.includes("-e") || args.includes("--env") || args.some((a) => /^(-H|--header)$/.test(a))) {
         raise("medium", "Stores environment variables or headers for the MCP server");
       }
@@ -333,19 +371,25 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
       out.kind = "read_only";
       raise("low", "Reads Claude Code MCP configuration");
     } else if (args[0] === "mcp" && args[1] === "remove") raise("medium", "Removes an MCP server from Claude Code");
+    else if (args[0] === "mcp" && args[1] === "add-json") raise("high", "Registers an MCP server from raw JSON");
     else if (args[0] === "--version" || args[0] === "-v" || args[0] === "doctor") raise("low", "Checks Claude Code");
     else raise("high", "Runs Claude Code with a free-form task");
   } else if (name === "git") {
+    if (args.some((a) => /^(-c|--config-env|--upload-pack|--receive-pack|--exec|-u|--template|--separate-git-dir)(=|$)/.test(a) || /core\.(sshcommand|hookspath|pager|editor|fsmonitor)|ext::|fd::/i.test(a))) {
+      raise("high", "Git options that can run arbitrary programs");
+    }
     if (args[0] === "clone") {
-      const url = positional(seg.argv)[1] ?? "";
-      raise(/^https:\/\/(github\.com|gitlab\.com|bitbucket\.org)\//.test(url) ? "low" : "medium", "Clones a repository into the workspace");
+      const [url = "", dir] = positional(seg.argv).slice(1);
+      if (dir) out.writes.push(dir);
+      raise(/^https:\/\/(github\.com|gitlab\.com|bitbucket\.org)\/[\w.-]+\/[\w.-]+(\.git)?\/?$/.test(url) ? "low" : "medium", "Clones a repository into the workspace");
     } else if (["status", "log", "diff", "--version"].includes(args[0] ?? "")) raise("low", "Reads Git state");
     else if (args[0] === "config" && args.includes("--global")) raise("medium", "Changes your global Git configuration");
     else raise("medium", `Runs git ${args[0] ?? ""}`.trim());
   } else if (["mkdir", "touch", "cp", "mv", "ln", "tee"].includes(name)) {
     out.kind = "file_write";
     const targets = positional(seg.argv);
-    out.writes.push(...(name === "cp" || name === "mv" || name === "ln" ? targets.slice(-1) : targets));
+    // mv removes its sources, so every path counts; cp/ln only write the destination.
+    out.writes.push(...(name === "cp" || name === "ln" ? targets.slice(-1) : targets));
     if (name === "ln") raise("medium", "Creates a link that can redirect file access");
     else raise("low", `Creates or changes files (${name})`);
   } else if (name === "node" || name === "python" || name === "python3") {
@@ -353,6 +397,13 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
       out.kind = "read_only";
       raise("low", `Checks the installed ${name} version`);
     } else raise("medium", `Runs a ${name} program`);
+  } else if (FILE_READERS.has(name)) {
+    const pathArgs = positional(seg.argv).slice(name === "grep" || name === "rg" ? 1 : 0);
+    const recursive = args.some((a) => /^-[a-zA-Z]*[rR]/.test(a));
+    if (pathArgs.every(staysLocal) && !(recursive && pathArgs.length === 0 && name !== "ls")) {
+      out.kind = "read_only";
+      raise("low", "Reads files in the workspace");
+    } else raise("medium", "Reads files outside the workspace (their contents are reported back)");
   } else if (READ_ONLY.has(name)) {
     if (out.kind === "other") out.kind = "read_only";
     raise("low", "Reads information only");
@@ -370,13 +421,22 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
   }
 }
 
+/** Analyze an argv that never went through a shell (MCP server commands, structured specs). */
+export function analyzeArgv(argv: string[]): CommandAnalysis {
+  const out: CommandAnalysis = { risk: "low", denied: false, executable: true, reasons: [], writes: [], installs: [], kind: "other" };
+  analyzeSegment({ argv, dynamic: argv.some((a) => /[$`*?[{]/.test(a)), redirects: [], env: {} }, out);
+  out.reasons = [...new Set(out.reasons)];
+  out.executable = !out.denied;
+  return out;
+}
+
 /**
  * Classify a command. Never throws; an unparseable command is high risk and not executable.
  */
 export function analyzeCommand(command: string): CommandAnalysis {
   const out: CommandAnalysis = { risk: "low", denied: false, executable: false, reasons: [], writes: [], installs: [], kind: "other" };
   const normalized = command.normalize("NFKC");
-  if (/[\u0000-\u0008\u000e-\u001f\u007f​-‏‪-‮⁦-⁩]/.test(normalized)) {
+  if (/[\u0000-\u0008\u000b-\u001f\u007f\u00ad\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2069\ufeff]/.test(normalized)) {
     out.risk = "high";
     out.denied = true;
     out.reasons.push("Contains invisible or control characters");
@@ -422,8 +482,10 @@ export function analyzeCommand(command: string): CommandAnalysis {
 }
 
 /** argv lists for an executable command (segments joined by &&). Throws if it isn't simple. */
-export function toArgvList(command: string): string[][] {
+export function toArgvList(command: string, home?: string): string[][] {
   const parsed = parseCommand(command.normalize("NFKC"));
   if (!isSimpleCommand(parsed)) throw new Error("Command needs a shell; refusing to run it");
-  return parsed.segments.map((s) => s.argv);
+  // A shell would expand a leading ~/ — do the same, and only that, so we run what was analyzed.
+  const expand = (a: string) => (home && (a === "~" || a.startsWith("~/")) ? home + a.slice(1) : a);
+  return parsed.segments.map((s) => s.argv.map(expand));
 }

@@ -1,3 +1,4 @@
+import { CONTENT_INTENTS } from "@aop-inbox/core/browser";
 import { z } from "zod";
 
 /** Top-level smart collections. The analyzer must pick one; subcategories are free-form. */
@@ -28,6 +29,18 @@ export const itemAnalysisSchema = z.object({
   whyItMatters: trimmed(300).describe("Why this is worth keeping and where it could be applied. 1–2 sentences."),
   importanceScore: z.number().min(0).max(1).describe("0.0–1.0 long-term usefulness to a builder."),
   language: trimmed(8).describe("ISO 639-1 code of the content, e.g. 'en', 'ko'."),
+  contentIntent: z
+    .enum(CONTENT_INTENTS)
+    .describe(
+      "knowledge: worth knowing · reference: look up later (tools, repos, lists) · actionable: the reader should do something by hand · executable: concrete setup a local agent could run (installs, MCP, config) · requires_user: the key step needs a person (sign-up, payment, API key, login, comment-to-get-guide).",
+    ),
+  actionability: z.object({
+    score: z.number().min(0).max(1).describe("0 = nothing to do, 1 = concrete steps to apply now."),
+    reason: trimmed(200),
+  }),
+  executable: z.boolean().describe("True only if the content shows concrete commands or settings."),
+  setupSpecCandidate: z.boolean().describe("True if a step-by-step setup plan could be extracted."),
+  whatYouCanDo: trimmed(300).describe("For actionable/executable content: what the reader can do with it, 1 sentence. Empty string otherwise."),
 });
 export type ItemAnalysis = z.infer<typeof itemAnalysisSchema>;
 

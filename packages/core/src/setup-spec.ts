@@ -84,8 +84,7 @@ export const SetupStepSchema = z.object({
 });
 export type SetupStep = z.infer<typeof SetupStepSchema>;
 
-export const SetupSpecSchema = z
-  .object({
+export const SetupSpecBaseSchema = z.object({
     specVersion: z.literal(SPEC_VERSION),
     source: z.object({
       itemId: z.string().min(1),
@@ -102,8 +101,9 @@ export const SetupSpecSchema = z
     suspiciousInstructions: z.array(z.string().max(500)).max(20).default([]),
     /** Comment/follow-gated guides ("comment MCP and I'll DM you the guide"). */
     guideRequired: z.object({ keyword: z.string().max(60).optional(), instructions: z.string().max(400) }).optional(),
-  })
-  .superRefine((spec, ctx) => {
+});
+
+export const SetupSpecSchema = SetupSpecBaseSchema.superRefine((spec, ctx) => {
     const ids = new Set<string>();
     spec.steps.forEach((step, i) => {
       if (ids.has(step.id)) ctx.addIssue({ code: "custom", path: ["steps", i, "id"], message: `duplicate step id ${step.id}` });

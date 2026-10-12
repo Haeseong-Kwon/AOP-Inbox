@@ -52,6 +52,34 @@ function firstSentences(text: string, maxChars: number): string {
   return out || clip(text.replace(/\s+/g, " ").trim(), maxChars);
 }
 
+const COMMAND_LINE = /(^|\n)\s*(?:\$\s*)?(npm|npx|pnpm|yarn|bun|brew|pip3?|pipx|uvx?|claude|git|curl|wget|node|python3?|mkdir|docker|cargo|go)\s+\S+/i;
+const NEEDS_PERSON = /(api[ _-]?key|sign[ -]?up|회원가입|결제|subscribe|log ?in|로그인|oauth|발급|create an account|billing)/i;
+const GUIDE_GATE = /(comment|댓글).{0,40}(guide|가이드|dm|디엠|보내)/i;
+const DO_VERBS = /\b(try|set up|setup|configure|install|build|create|add|enable|follow these|step \d)\b|해보세요|설정|만들어|설치|따라/i;
+const REFERENCE = /(awesome|list of|alternatives|comparison|vs\.?|repo|library|libraries|도구 모음|레퍼런스)/i;
+
+/** Heuristic intent for offline mode; the real classifier is the LLM. */
+export function mockIntent(text: string): Pick<ItemAnalysis, "contentIntent" | "actionability" | "executable" | "setupSpecCandidate"> {
+  if (GUIDE_GATE.test(text)) {
+    return { contentIntent: "requires_user", actionability: { score: 0.6, reason: "The creator shares the guide only after a comment." }, executable: false, setupSpecCandidate: true };
+  }
+  if (COMMAND_LINE.test(text)) {
+    const person = NEEDS_PERSON.test(text);
+    return {
+      contentIntent: "executable",
+      actionability: { score: 0.85, reason: person ? "Shows setup commands, plus a step only you can do." : "Shows concrete setup commands." },
+      executable: true,
+      setupSpecCandidate: true,
+    };
+  }
+  if (NEEDS_PERSON.test(text) && DO_VERBS.test(text)) {
+    return { contentIntent: "requires_user", actionability: { score: 0.55, reason: "Needs an account, key or payment from you." }, executable: false, setupSpecCandidate: true };
+  }
+  if (DO_VERBS.test(text)) return { contentIntent: "actionable", actionability: { score: 0.5, reason: "Describes something to try by hand." }, executable: false, setupSpecCandidate: false };
+  if (REFERENCE.test(text)) return { contentIntent: "reference", actionability: { score: 0.15, reason: "Material to look up later." }, executable: false, setupSpecCandidate: false };
+  return { contentIntent: "knowledge", actionability: { score: 0.1, reason: "Information to keep." }, executable: false, setupSpecCandidate: false };
+}
+
 export function mockAnalyze(input: AnalyzeItemInput): ItemAnalysis {
   const body = [input.userNote, input.title, input.description, input.content].filter(Boolean).join(". ");
   const tokens = new Set(tokenize(body));
@@ -77,6 +105,8 @@ export function mockAnalyze(input: AnalyzeItemInput): ItemAnalysis {
     whyItMatters: `Filed under ${category}${keywords[0] ? `, around ${keywords.slice(0, 2).join(" and ")}` : ""}. Add an AI key for a real explanation of why it matters.`,
     importanceScore: Math.min(0.85, 0.25 + Math.min(tokens.size, 120) / 240 + (input.userNote ? 0.15 : 0)),
     language: /[가-힣]/.test(body) ? "ko" : "en",
+    ...mockIntent([input.userNote, input.description, input.content].filter(Boolean).join("\n")),
+    whatYouCanDo: "",
   };
 }
 

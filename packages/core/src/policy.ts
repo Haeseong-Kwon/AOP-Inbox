@@ -1,4 +1,4 @@
-import { analyzeCommand, maxRisk, referencesSensitivePath } from "./command";
+import { analyzeArgv, analyzeCommand, maxRisk, referencesSensitivePath } from "./command";
 import type { FailureCode } from "./errors";
 import { classifyPath, PREVIEW_PATHS, ZONE_RISK, type PathContext, type PathZone } from "./paths";
 import type { Risk, SetupSpec, SetupStep } from "./setup-spec";
@@ -62,16 +62,20 @@ function mcpRisk(step: SetupStep, reasons: string[]): Risk {
   if (!mcp) return "low";
   let risk: Risk = mcp.scope === "project" ? "low" : "medium";
   reasons.push(mcp.scope === "project" ? "Registers an MCP server for the workspace project" : "Changes your Claude Code configuration (~/.claude.json)");
-  const cmd = [mcp.commandOrUrl, ...mcp.args].join(" ");
   if (mcp.transport === "stdio") {
-    const analysis = analyzeCommand(cmd);
-    // The MCP server command runs later inside Claude Code; its own risk carries over.
+    // Analyzed as argv, exactly as it will be stored — no re-quoting.
+    const analysis = analyzeArgv([mcp.commandOrUrl, ...mcp.args]);
     if (analysis.denied || analysis.risk === "high") {
       risk = "high";
       reasons.push(...analysis.reasons.map((r) => `MCP server command: ${r}`));
-    } else if (/^(npx|pnpx|bunx|uvx|pipx)$/.test(mcp.commandOrUrl)) {
+    } else {
+      // A local MCP server runs a program every time Claude Code starts it.
       risk = maxRisk(risk, "medium");
-      reasons.push("The MCP server downloads and runs package code when Claude Code starts it");
+      reasons.push(
+        /^(npx|pnpx|bunx|uvx|pipx)$/.test(mcp.commandOrUrl)
+          ? "The MCP server downloads and runs package code when Claude Code starts it"
+          : "The MCP server runs a program whenever Claude Code starts it",
+      );
     }
   } else if (!/^https:\/\//.test(mcp.commandOrUrl)) {
     risk = "high";

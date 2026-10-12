@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { items, user } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { mockIntent } from "@/lib/ai/mock";
 import { applyAnalysis, drainQueue, enqueueProcessing } from "@/lib/ingestion/pipeline";
 import { normalizeUrl } from "@/lib/sources/normalize";
 import { SEED_ITEMS } from "./seed-data";
@@ -48,6 +49,7 @@ for (const seed of SEED_ITEMS) {
       creatorName: seed.creatorName,
       siteName: source?.sourceType === "instagram" ? "Instagram" : undefined,
       userNote: seed.note,
+      contentText: seed.content,
       status: seed.status ?? "unread",
       favorite: seed.favorite ?? false,
       savedAt: new Date(now - seed.daysAgo * DAY),
@@ -55,7 +57,8 @@ for (const seed of SEED_ITEMS) {
       processingStage: "analyze",
     })
     .returning();
-  await applyAnalysis(row, seed.analysis, "seed");
+  const analysis = { whatYouCanDo: "", ...mockIntent([seed.note, seed.content].filter(Boolean).join("\n")), ...seed.analysis };
+  await applyAnalysis(row, analysis, "seed");
   await enqueueProcessing(row.id);
 }
 

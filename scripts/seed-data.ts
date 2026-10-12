@@ -1,5 +1,8 @@
 import type { ItemAnalysis } from "@/lib/ai/schemas";
 
+type ActionFields = "contentIntent" | "actionability" | "executable" | "setupSpecCandidate" | "whatYouCanDo";
+export type SeedAnalysis = Omit<ItemAnalysis, ActionFields> & Partial<Pick<ItemAnalysis, ActionFields>>;
+
 /** Demo inbox for development. Instagram shortcodes are fictional; web URLs are real pages. */
 export interface SeedItem {
   url?: string;
@@ -10,7 +13,9 @@ export interface SeedItem {
   status?: "unread" | "read" | "archived";
   favorite?: boolean;
   viewedDaysAgo?: number;
-  analysis: ItemAnalysis;
+  /** Caption / page text — what the action layer extracts commands from. */
+  content?: string;
+  analysis: SeedAnalysis;
 }
 
 export const SEED_ITEMS: SeedItem[] = [

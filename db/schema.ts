@@ -16,6 +16,8 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
+import type { ContentIntent, ExecutionStatus, ItemActionState, PlannedAction, SetupSpec, SpecPolicy, StepResult } from "@aop-inbox/core";
+
 export const EMBEDDING_DIMENSIONS = 1536;
 
 const tsvector = customType<{ data: string }>({ dataType: () => "tsvector" });
@@ -159,6 +161,18 @@ export const items = pgTable(
 
     importId: uuid("import_id").references(() => imports.id, { onDelete: "set null" }),
 
+    // Action layer (all nullable: rows analyzed before it existed are re-analyzed lazily)
+    contentIntent: text("content_intent").$type<ContentIntent>(),
+    actionabilityScore: real("actionability_score"),
+    actionabilityReason: text("actionability_reason"),
+    whatYouCanDo: text("what_you_can_do"),
+    actionState: text("action_state").$type<ItemActionState>(),
+    /** Searchable digest of the setup spec + execution history (maintained by lib/actions/state.ts). */
+    actionText: text("action_text"),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    /** Creator guide attached to a Reel: the guide item points at its parent. */
+    parentItemId: uuid("parent_item_id").references((): AnyPgColumn => items.id, { onDelete: "set null" }),
+
     publishedAt: timestamp("published_at", { withTimezone: true }),
     savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
     lastViewedAt: timestamp("last_viewed_at", { withTimezone: true }),
@@ -176,6 +190,8 @@ export const items = pgTable(
     index("items_user_status_idx").on(t.userId, t.status),
     index("items_search_vector_idx").using("gin", t.searchVector),
     index("items_search_trgm_idx").using("gin", sql`${t.searchText} gin_trgm_ops`),
+    index("items_user_action_state_idx").on(t.userId, t.actionState),
+    index("items_parent_idx").on(t.parentItemId),
   ],
 );
 
@@ -263,7 +279,7 @@ export const embeddings = pgTable(
 
 /* ─── Jobs, imports, observability ─────────────────────────────────────── */
 
-export type JobType = "process_item" | "assign_collections";
+export type JobType = "process_item" | "assign_collections" | "extract_actions" | "follow_up" | "maintenance";
 export type JobStatus = "pending" | "processing" | "completed" | "failed";
 
 export const processingJobs = pgTable(
@@ -330,7 +346,10 @@ export const aiUsage = pgTable("ai_usage", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: text("user_id"),
   operation: text("operation").notNull(),
+  provider: text("provider"),
   model: text("model").notNull(),
+  promptVersion: integer("prompt_version"),
+  estimatedCostUsd: real("estimated_cost_usd"),
   inputTokens: integer("input_tokens"),
   outputTokens: integer("output_tokens"),
   latencyMs: integer("latency_ms").notNull(),
@@ -338,5 +357,222 @@ export const aiUsage = pgTable("ai_usage", {
   createdAt: createdAt(),
 });
 
+/* ─── Action layer ─────────────────────────────────────────────────────── */
+
+export const setupSpecs = pgTable(
+  "setup_specs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    revision: integer("revision").notNull(),
+    specVersion: integer("spec_version").notNull(),
+    promptVersion: integer("prompt_version").notNull(),
+    model: text("model").notNull(),
+    spec: jsonb("spec").$type<SetupSpec>().notNull(),
+    /** Server-side (lexical) policy preview at creation time; the device re-evaluates before running. */
+    policy: jsonb("policy").$type<SpecPolicy>().notNull(),
+    contentHash: text("content_hash").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("setup_specs_item_revision_uq").on(t.itemId, t.revision), index("setup_specs_user_idx").on(t.userId)],
+);
+
+/** Stage-1 fact extraction cache, keyed by content only (no user notes). */
+export const actionAnalysisCache = pgTable("action_analysis_cache", {
+  cacheKey: text("cache_key").primaryKey(),
+  facts: jsonb("facts").notNull(),
+  model: text("model").notNull(),
+  createdAt: createdAt(),
+});
+
+export const devices = pgTable(
+  "devices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    platform: text("platform").notNull(),
+    arch: text("arch").notNull(),
+    osVersion: text("os_version"),
+    agentVersion: text("agent_version"),
+    executorVersion: text("executor_version"),
+    /** sha256 of the device token; the token itself is only on the device (Keychain). */
+    tokenHash: text("token_hash").notNull(),
+    paused: boolean("paused").notNull().default(false),
+    autoRunLow: boolean("auto_run_low").notNull().default(false),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("devices_token_hash_uq").on(t.tokenHash), index("devices_user_idx").on(t.userId)],
+);
+
+export const devicePairings = pgTable("device_pairings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: createdAt(),
+});
+
+export const executionJobs = pgTable(
+  "execution_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    // The ledger outlives the item; the title is kept so history stays readable.
+    itemId: uuid("item_id").references(() => items.id, { onDelete: "set null" }),
+    itemTitle: text("item_title").notNull(),
+    setupSpecId: uuid("setup_spec_id").references(() => setupSpecs.id, { onDelete: "set null" }),
+    specRevision: integer("spec_revision").notNull(),
+    /** Exact spec this job runs — reproducible even if the item is re-analyzed. */
+    spec: jsonb("spec").$type<SetupSpec>().notNull(),
+    deviceId: uuid("device_id").references(() => devices.id, { onDelete: "set null" }),
+    status: text("status").$type<ExecutionStatus>().notNull(),
+    risk: text("risk").$type<"low" | "medium" | "high">().notNull(),
+    approvedStepIds: jsonb("approved_step_ids").$type<string[]>().notNull().default([]),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    plan: jsonb("plan").$type<PlannedAction[]>(),
+    errorCode: text("error_code"),
+    errorDetail: text("error_detail"),
+    agentVersion: text("agent_version"),
+    executorVersion: text("executor_version"),
+    os: text("os"),
+    arch: text("arch"),
+    /** Bumped on every dispatch so a stale stream never re-sends a handled job. */
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("execution_jobs_user_idx").on(t.userId, t.createdAt.desc()),
+    index("execution_jobs_item_idx").on(t.itemId),
+    index("execution_jobs_device_status_idx").on(t.deviceId, t.status),
+  ],
+);
+
+export type StepStatus = "pending" | "done" | "skipped" | "failed" | "needs_user" | "rolled_back";
+
+export const executionSteps = pgTable(
+  "execution_steps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => executionJobs.id, { onDelete: "cascade" }),
+    stepId: text("step_id").notNull(),
+    position: integer("position").notNull(),
+    title: text("title").notNull(),
+    status: text("status").$type<StepStatus>().notNull().default("pending"),
+    /** includes verification result, changed files, snapshot ids */
+    result: jsonb("result").$type<StepResult>(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("execution_steps_job_step_uq").on(t.jobId, t.stepId)],
+);
+
+/** Append-only execution ledger. Never updated or deleted by the app. */
+export const jobEvents = pgTable(
+  "job_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => executionJobs.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: createdAt(),
+  },
+  (t) => [index("job_events_job_idx").on(t.jobId, t.createdAt)],
+);
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<"follow_up_d3" | "follow_up_d7" | "resurface" | "approval_required" | "execution_result" | "user_action">().notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    itemId: uuid("item_id").references(() => items.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => executionJobs.id, { onDelete: "cascade" }),
+    /** One live notification per key (e.g. follow-up:d3:<jobId>). */
+    dedupeKey: text("dedupe_key").notNull(),
+    deliverAfter: timestamp("deliver_after", { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("notifications_dedupe_uq").on(t.dedupeKey), index("notifications_user_idx").on(t.userId, t.deliverAfter)],
+);
+
+export type UsageFeedbackKind = "used" | "useful" | "not_using" | "rolled_back" | "remind_later" | "applied";
+
+export const usageFeedback = pgTable(
+  "usage_feedback",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => executionJobs.id, { onDelete: "set null" }),
+    kind: text("kind").$type<UsageFeedbackKind>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("usage_feedback_item_idx").on(t.itemId)],
+);
+
+export const userPreferences = pgTable("user_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  timezone: text("timezone").notNull().default("UTC"),
+  quietStart: integer("quiet_start").notNull().default(22),
+  quietEnd: integer("quiet_end").notNull().default(8),
+  followUps: boolean("follow_ups").notNull().default(true),
+  /** Global kill switch: nothing executes on any device while true. */
+  executionPaused: boolean("execution_paused").notNull().default(false),
+  updatedAt: updatedAt(),
+});
+
+/** Privacy-friendly product analytics: names + ids only, never content. */
+export const productEvents = pgTable(
+  "product_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    itemId: uuid("item_id"),
+    props: jsonb("props").$type<Record<string, string | number | boolean>>().notNull().default({}),
+    createdAt: createdAt(),
+  },
+  (t) => [index("product_events_user_name_idx").on(t.userId, t.name, t.createdAt)],
+);
+
 export type Item = typeof items.$inferSelect;
+export type ExecutionJob = typeof executionJobs.$inferSelect;
+export type Device = typeof devices.$inferSelect;
 export type Collection = typeof collections.$inferSelect;
