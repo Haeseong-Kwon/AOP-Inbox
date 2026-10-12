@@ -50,6 +50,75 @@ function corpus(facts: ExtractedFacts): string {
 
 const MIN_QUOTE = 6;
 
+type McpDef = NonNullable<SetupStep["mcp"]>;
+
+/** Parse `claude mcp add …` exactly as the CLI would, so the spec can be compared field by field. */
+export function mcpFromCommand(command: string): McpDef | null {
+  const argv = parseCommand(command).segments[0]?.argv ?? [];
+  if (argv[0] !== "claude" || argv[1] !== "mcp" || argv[2] !== "add") return null;
+  let scope: McpDef["scope"] = "local";
+  let transport: McpDef["transport"] = "stdio";
+  const envKeys: string[] = [];
+  const positional: string[] = [];
+  let serverArgv: string[] | null = null;
+  for (let i = 3; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--") {
+      serverArgv = argv.slice(i + 1);
+      break;
+    }
+    if (a === "-s" || a === "--scope") scope = argv[++i] as McpDef["scope"];
+    else if (a.startsWith("--scope=")) scope = a.slice(8) as McpDef["scope"];
+    else if (a === "-t" || a === "--transport") transport = argv[++i] as McpDef["transport"];
+    else if (a.startsWith("--transport=")) transport = a.slice(12) as McpDef["transport"];
+    else if (a === "-e" || a === "--env") envKeys.push((argv[++i] ?? "").split("=")[0]);
+    else if (a.startsWith("-")) return null; // unknown option: don't guess its meaning
+    else positional.push(a);
+  }
+  if (!["local", "user", "project"].includes(scope) || !["stdio", "http", "sse"].includes(transport)) return null;
+  const [name, url] = positional;
+  if (!name) return null;
+  if (serverArgv && serverArgv.length > 0 && positional.length === 1) {
+    return { name, transport: "stdio", commandOrUrl: serverArgv[0], args: serverArgv.slice(1), scope, envKeys };
+  }
+  if (!serverArgv && url && positional.length === 2 && transport !== "stdio") return { name, transport, commandOrUrl: url, args: [], scope, envKeys };
+  return null;
+}
+
+function sameMcp(a: McpDef, b: { name: string; transport: string; commandOrUrl: string; args: string[]; scope: string; envKeys: string[] }): boolean {
+  return (
+    a.name === b.name &&
+    a.transport === b.transport &&
+    a.commandOrUrl === b.commandOrUrl &&
+    a.scope === b.scope &&
+    a.args.length === b.args.length &&
+    a.args.every((x, i) => x === b.args[i]) &&
+    [...a.envKeys].sort().join(",") === [...b.envKeys].sort().join(",")
+  );
+}
+
+/** Every literal the change would write must be present in the extracted facts. */
+function changeBacked(change: NonNullable<StepDraft["change"]>, text: string): boolean {
+  const present = (v: string) => v.trim().length === 0 || text.includes(fold(v));
+  if (!present(change.path)) return false;
+  if (change.kind === "file_write") return Boolean(change.content) && present(change.content!);
+  if (change.kind === "append_line") return Boolean(change.line) && present(change.line!);
+  let value: unknown;
+  try {
+    value = JSON.parse(change.jsonValue ?? "null");
+  } catch {
+    return false;
+  }
+  const leaves: string[] = [];
+  const walk = (v: unknown, key?: string) => {
+    if (key) leaves.push(key);
+    if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walk(x, Array.isArray(v) ? undefined : k);
+    else if (v !== null && v !== undefined && typeof v !== "boolean") leaves.push(String(v));
+  };
+  walk(value);
+  return leaves.length > 0 && leaves.every(present);
+}
+
 export interface PostprocessReport {
   droppedCommands: string[];
   downgradedSteps: string[];
@@ -104,19 +173,17 @@ function convertStep(d: StepDraft, ctx: { allowed: Set<string>; text: string; id
     commands.push(redactSecrets(c));
   }
 
-  // MCP definition: every token must appear in an allowed command.
+  // MCP definition: must be exactly what ONE fact command says — name, server argv, scope, transport, env keys.
   let mcp: SetupStep["mcp"];
   if (d.mcp) {
-    const tokens = new Set([...ctx.allowed].flatMap((c) => parseCommand(c).segments.flatMap((s) => s.argv)));
-    const needed = [d.mcp.name, d.mcp.commandOrUrl, ...d.mcp.args];
-    if (needed.every((t) => tokens.has(t))) {
-      mcp = { ...d.mcp, envKeys: d.mcp.envKeys.filter((k) => /^[A-Z_][A-Z0-9_]*$/.test(k)) };
-    } else ctx.report.droppedCommands.push(`mcp:${d.mcp.name}`);
+    const match = [...ctx.allowed].map(mcpFromCommand).find((m) => m && sameMcp(m, d.mcp!));
+    if (match) mcp = match;
+    else ctx.report.droppedCommands.push(`mcp:${d.mcp.name}`);
   }
 
-  // Structured file change: needs evidence and must be well-formed.
+  // Structured file change: the payload itself must appear in the facts, not just some quote.
   let change: SetupStep["change"];
-  if (d.change && evidence) {
+  if (d.change && evidence && changeBacked(d.change, ctx.text)) {
     let candidate: unknown = null;
     if (d.change.kind === "json_merge") {
       try {
@@ -141,7 +208,8 @@ function convertStep(d: StepDraft, ctx: { allowed: Set<string>; text: string; id
     type: d.type,
     instruction: redactSecrets(d.instruction).slice(0, 1200) || d.title,
     commands,
-    target: d.target ? redactSecrets(d.target) : undefined,
+    // Display only — executors never use `target`; writes come from `change` / analyzed commands.
+    target: d.target ? redactSecrets(d.target).slice(0, 400) : undefined,
     needsUser: d.needsUser || hadSecret,
     risk: d.risk,
     confidence: Math.max(0, Math.min(1, d.confidence)),

@@ -1,5 +1,6 @@
-import { analyzeCommand, parseCommand, RECIPE_IDS, type ExtractedFacts } from "@aop-inbox/core";
+import { analyzeCommand, parseCommand, type ExtractedFacts } from "@aop-inbox/core";
 import type { FactsDraft, SpecDraft, StepDraft } from "./llm-schemas";
+import { mcpFromCommand } from "./postprocess";
 
 /**
  * Deterministic stand-ins for the two LLM stages (offline mode, tests, evals).
@@ -62,35 +63,6 @@ function slug(text: string, used: Set<string>): string {
   return id;
 }
 
-function mcpFromArgv(argv: string[]): StepDraft["mcp"] {
-  // claude mcp add [opts] <name> (-- <cmd> [args] | <url>)
-  const rest = argv.slice(3);
-  let scope: "local" | "user" | "project" = "local";
-  let transport: "stdio" | "http" | "sse" = "stdio";
-  const envKeys: string[] = [];
-  const positional: string[] = [];
-  for (let i = 0; i < rest.length; i++) {
-    const a = rest[i];
-    if (a === "--") {
-      positional.push(...rest.slice(i + 1).map((x, j) => (j === 0 ? `\u0000${x}` : x)));
-      break;
-    }
-    if (a === "-s" || a === "--scope") scope = rest[++i] as typeof scope;
-    else if (a === "-t" || a === "--transport") transport = rest[++i] as typeof transport;
-    else if (a === "-e" || a === "--env") envKeys.push(rest[++i]?.split("=")[0] ?? "");
-    else if (a.startsWith("-")) i++;
-    else positional.push(a);
-  }
-  const name = positional.find((p) => !p.startsWith("\u0000")) ?? "";
-  const dashIdx = positional.findIndex((p) => p.startsWith("\u0000"));
-  if (dashIdx >= 0) {
-    const cmd = positional.slice(dashIdx).map((p, j) => (j === 0 ? p.slice(1) : p));
-    return { name, transport, commandOrUrl: cmd[0], args: cmd.slice(1), scope, envKeys: envKeys.filter((k) => /^[A-Z_][A-Z0-9_]*$/.test(k)) };
-  }
-  const url = positional[positional.indexOf(name) + 1];
-  return url ? { name, transport: transport === "stdio" ? "http" : transport, commandOrUrl: url, args: [], scope, envKeys: [] } : null;
-}
-
 function verifyFor(command: string): Pick<StepDraft, "verifyRecipe" | "verifyArgs"> {
   const argv = parseCommand(command).segments[0]?.argv ?? [];
   const [cmd, sub, ...rest] = argv;
@@ -139,7 +111,7 @@ export function mockStructure(facts: ExtractedFacts, meta: { title?: string | nu
     const analysis = analyzeCommand(command);
     const argv = parseCommand(command).segments[0]?.argv ?? [];
     const isMcp = argv[0] === "claude" && argv[1] === "mcp" && argv[2] === "add";
-    const mcp = isMcp ? mcpFromArgv(argv) : null;
+    const mcp = isMcp ? mcpFromCommand(command) : null;
     const type: StepDraft["type"] = isMcp ? "mcp_add" : analysis.kind === "package_install" ? "cli_install" : "command";
     const title = isMcp
       ? `Register ${mcp?.name ?? "the"} MCP server`
@@ -184,4 +156,3 @@ export function mockStructure(facts: ExtractedFacts, meta: { title?: string | nu
   };
 }
 
-export const MOCK_RECIPES = RECIPE_IDS;

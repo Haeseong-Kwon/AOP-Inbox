@@ -14,6 +14,11 @@ const valid = {
   whyItMatters: "Throughput.",
   importanceScore: 0.8,
   language: "en",
+  contentIntent: "knowledge",
+  actionability: { score: 0.1, reason: "Info" },
+  executable: false,
+  setupSpecCandidate: false,
+  whatYouCanDo: "",
 };
 
 describe("itemAnalysisSchema", () => {
