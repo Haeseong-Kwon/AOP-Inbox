@@ -27,17 +27,12 @@ export async function createPairingCode(userId: string): Promise<{ code: string;
   return { code: `${raw.slice(0, 3)}-${raw.slice(3)}`, expiresAt };
 }
 
-// Failed-attempt windows, stored in Postgres so they hold across restarts and instances.
-const PER_CLIENT_FAILURES = 10;
-const GLOBAL_FAILURES = 100;
+// Attempt windows in Postgres: one atomic increment-and-check per request (no check-then-act race),
+// shared across restarts and instances. Counting attempts (not failures) caps guessing outright.
+const PER_CLIENT_ATTEMPTS = 10;
+const GLOBAL_ATTEMPTS = 200; // ≈2·10⁻⁷ chance per window of hitting a live 31⁶ code
 
-async function failuresFor(key: string): Promise<number> {
-  const [row] = await db.select().from(authThrottle).where(eq(authThrottle.key, key));
-  if (!row || Date.now() - row.windowStart.getTime() > PAIRING_TTL_MS) return 0;
-  return row.count;
-}
-
-async function recordFailure(key: string): Promise<number> {
+async function consumeAttempt(key: string): Promise<number> {
   const [row] = await db
     .insert(authThrottle)
     .values({ key, count: 1, windowStart: new Date() })
@@ -56,8 +51,8 @@ export async function pairDevice(
   input: { code: string; name: string; platform: string; arch: string; agentVersion: string },
   client = "unknown",
 ): Promise<{ deviceId: string; token: string }> {
-  const clientKey = `pair:client:${client}`;
-  if ((await failuresFor(clientKey)) >= PER_CLIENT_FAILURES || (await failuresFor("pair:global")) >= GLOBAL_FAILURES) {
+  // Global first, so a spoofed or rotating client identity can't escape the overall cap.
+  if ((await consumeAttempt("pair:global")) > GLOBAL_ATTEMPTS || (await consumeAttempt(`pair:client:${client}`)) > PER_CLIENT_ATTEMPTS) {
     throw new HttpError(429, "Too many pairing attempts. Create a new code and try again in a few minutes.");
   }
   const codeHash = sha(normalizeCode(input.code));
@@ -77,11 +72,6 @@ export async function pairDevice(
     return { deviceId: device.id, token };
   });
   if (!result) {
-    await recordFailure(clientKey);
-    if ((await recordFailure("pair:global")) >= GLOBAL_FAILURES) {
-      // Someone is guessing at scale: burn every live code so a guess can't land.
-      await db.update(devicePairings).set({ usedAt: new Date() }).where(isNull(devicePairings.usedAt));
-    }
     throw new HttpError(401, "That code is invalid or has expired. Create a new one in Settings → Local Agent.");
   }
   return result;
