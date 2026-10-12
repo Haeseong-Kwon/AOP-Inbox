@@ -1,0 +1,14 @@
+{
+  "name": "@aop-inbox/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared contracts for AOP Inbox: SetupSpec, policy engine, execution state machine, agent protocol.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  }
+}

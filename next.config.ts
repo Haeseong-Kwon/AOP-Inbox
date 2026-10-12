@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,
+  transpilePackages: ["@aop-inbox/core"],
   devIndicators: { position: "bottom-right" },
   turbopack: {
     rules: {

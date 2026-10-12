@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.67",
+    "@aop-inbox/core": "workspace:*",
     "@tanstack/react-query": "^5.104.1",
     "ai": "^7.0.137",
     "better-auth": "^1.7.7",
