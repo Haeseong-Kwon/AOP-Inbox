@@ -10,21 +10,40 @@ import { BlockList, isIP, type LookupFunction } from "node:net";
  * the address validated is the address connected to (no DNS-rebinding gap).
  */
 
-const blocked = new BlockList();
+// Separate lists: BlockList treats IPv4 and IPv4-mapped IPv6 as equivalent,
+// so an IPv6 "::/96" rule would otherwise swallow every IPv4 address.
+const blockedV4 = new BlockList();
 for (const [net, prefix] of [
   ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16],
   ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["224.0.0.0", 4], ["240.0.0.0", 4],
-] as const) blocked.addSubnet(net, prefix, "ipv4");
-for (const [net, prefix] of [["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8]] as const) {
-  blocked.addSubnet(net, prefix, "ipv6");
+] as const) blockedV4.addSubnet(net, prefix, "ipv4");
+
+const blockedV6 = new BlockList();
+for (const [net, prefix] of [
+  ["64:ff9b::", 96], ["100::", 64], ["2001:db8::", 32], ["2002::", 16], // NAT64, discard, docs, 6to4
+  ["fc00::", 7], ["fe80::", 10], ["fec0::", 10], ["ff00::", 8],
+] as const) blockedV6.addSubnet(net, prefix, "ipv6");
+
+/** IPv4 embedded in an IPv4-mapped / -compatible IPv6 address (dotted or hex form). */
+function embeddedV4(address: string): string | null {
+  const dotted = address.match(/^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/i);
+  if (dotted) return dotted[1];
+  const hex = address.match(/^::(?:ffff:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  if (!hex) return null;
+  const hi = parseInt(hex[1], 16);
+  const lo = parseInt(hex[2], 16);
+  return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
 }
 
-export function isPrivateAddress(address: string): boolean {
-  const mapped = address.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
-  if (mapped) return blocked.check(mapped[1], "ipv4");
+export function isPrivateAddress(input: string): boolean {
+  const address = input.replace(/^\[|\]$/g, "").toLowerCase();
   const family = isIP(address);
   if (family === 0) return true;
-  return blocked.check(address, family === 4 ? "ipv4" : "ipv6");
+  if (family === 4) return blockedV4.check(address, "ipv4");
+  if (address === "::" || address === "::1") return true;
+  const v4 = embeddedV4(address);
+  if (v4) return blockedV4.check(v4, "ipv4");
+  return blockedV6.check(address, "ipv6");
 }
 
 export class UnsafeUrlError extends Error {}
@@ -109,6 +128,12 @@ export async function safeFetch(input: string, options: SafeFetchOptions = {}): 
     if (url.protocol !== "http:" && url.protocol !== "https:") throw new UnsafeUrlError("Only http(s) URLs are fetched");
     if (url.port && !["80", "443"].includes(url.port)) throw new UnsafeUrlError("Non-standard ports are not fetched");
     if (url.username || url.password) throw new UnsafeUrlError("Credentials in URLs are not fetched");
+    // Node skips `lookup` for IP-literal hosts, so check those here.
+    const host = url.hostname.replace(/^\[|\]$/g, "");
+    if (isIP(host) !== 0 && isPrivateAddress(host)) throw new UnsafeUrlError("Private addresses are not fetched");
+    if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal")) {
+      throw new UnsafeUrlError("Private hosts are not fetched");
+    }
     const res = await requestOnce(url, opts);
     if (res.status >= 300 && res.status < 400 && res.headers.location) {
       url = new URL(res.headers.location, url);
