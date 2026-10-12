@@ -40,7 +40,7 @@ describe("pairing", () => {
     const { code } = await createPairingCode(userId);
     await pairDevice({ code, name: "a", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" });
     await expect(pairDevice({ code, name: "b", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" })).rejects.toThrow(/invalid or has expired/);
-    await expect(pairDevice({ code: "ZZZZ-ZZZZZZ", name: "c", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" })).rejects.toThrow();
+    await expect(pairDevice({ code: "ZZZZZZ-ZZZZZZ", name: "c", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" })).rejects.toThrow();
   });
 });
 

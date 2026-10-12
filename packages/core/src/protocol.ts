@@ -64,7 +64,7 @@ export const AgentEventSchema = z.discriminatedUnion("type", [
 export type AgentEvent = z.infer<typeof AgentEventSchema>;
 
 export const PairRequestSchema = z.object({
-  code: z.string().regex(/^[A-Z0-9]{4}-?[A-Z0-9]{6}$/i),
+  code: z.string().regex(/^[A-Z0-9]{6}-?[A-Z0-9]{6}$/i),
   name: z.string().min(1).max(80),
   platform: z.string().max(20),
   arch: z.string().max(20),

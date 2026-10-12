@@ -110,7 +110,7 @@ export function evaluateStep(step: SetupStep, spec: Pick<SetupSpec, "suspiciousI
   if (step.change) {
     const c = classifyPath(step.change.path, paths);
     writes.push({ path: step.change.path, ...c });
-    const content = changeRisk(step.change, c.zone);
+    const content = changeRisk(step.change, c.zone, c.resolved);
     risk = maxRisk(risk, content.risk);
     reasons.push(...content.reasons);
   }

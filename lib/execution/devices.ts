@@ -20,12 +20,13 @@ export function normalizeCode(code: string): string {
   return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
-const LOOKUP_LEN = 4;
+// 6 + 6 chars from a 31-char alphabet: neither half is enumerable within the 10-minute lifetime.
+const LOOKUP_LEN = 6;
 const SECRET_LEN = 6;
 const randomChars = (n: number) => Array.from({ length: n }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
 
 /**
- * Code = 4-char public lookup id + 6-char secret ("ABCD-EFGHJK").
+ * Code = 6-char public lookup id + 6-char secret ("ABCDEF-GHJKMN").
  * Attempts are counted per code: five wrong secrets burn that one code.
  * No shared or global counter, so nobody can lock other people out.
  */
@@ -39,7 +40,19 @@ export async function createPairingCode(userId: string): Promise<{ code: string;
 
 const safeEqual = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
+// Load shedding only (per process) — security comes from per-code attempt limits and code entropy.
+let windowStart = Date.now();
+let windowCount = 0;
+function overloaded(): boolean {
+  if (Date.now() - windowStart > 60_000) {
+    windowStart = Date.now();
+    windowCount = 0;
+  }
+  return ++windowCount > 300;
+}
+
 export async function pairDevice(input: { code: string; name: string; platform: string; arch: string; agentVersion: string }): Promise<{ deviceId: string; token: string }> {
+  if (overloaded()) throw new HttpError(429, "Too many pairing requests right now. Try again in a minute.");
   const normalized = normalizeCode(input.code);
   const lookupId = normalized.slice(0, LOOKUP_LEN);
   const secretHash = sha(normalized.slice(LOOKUP_LEN));

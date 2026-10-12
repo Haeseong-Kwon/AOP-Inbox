@@ -56,7 +56,7 @@ describe("policy decisions", () => {
     );
     expect(outside.decision).toBe("blocked");
     const claude = evaluateStep(
-      step({ id: "a", type: "config_write", change: { kind: "json_merge", path: "~/.claude.json", value: { a: 1 } } }),
+      step({ id: "a", type: "config_write", change: { kind: "json_merge", path: "~/.claude/settings.json", value: { model: "opus" } } }),
       spec([]),
       { autoRunLow: true },
     );
@@ -160,5 +160,55 @@ describe("content-aware change risk", () => {
     expect(ws({ kind: "json_merge", path: "~/.claude/settings.json", value: { theme: "dark" } } as never)).toMatchObject({ risk: "medium", decision: "approve" });
     expect(ws({ kind: "append_line", path: "~/.zshrc", line: 'export PATH="$HOME/.local/bin:$PATH"' } as never).decision).toBe("approve");
     expect(ws({ kind: "file_write", path: "notes/todo.md", content: "- try it" } as never, "file_create").decision).toBe("auto");
+  });
+});
+
+describe("change risk: case folding and env allowlist", () => {
+  const ev = (change: object) => evaluateStep(step({ id: "c", type: "config_write", change: change as never }), spec([]), { autoRunLow: true });
+  it.each([
+    { kind: "file_write", path: "project/.CLAUDE/settings.local.json", content: "{}" },
+    { kind: "file_write", path: "project/.Git/hooks/pre-commit", content: "x" },
+    { kind: "json_merge", path: "project/Package.json", value: { scripts: { postinstall: "x" } } },
+    { kind: "file_write", path: "project/.ENVRC", content: "x" },
+  ])("case variants are still caught: %o", (change) => {
+    expect(ev(change).decision).toBe("blocked");
+  });
+  it.each([
+    "export NODE_OPTIONS=--require=/tmp/x.js",
+    "export DYLD_INSERT_LIBRARIES=/tmp/x.dylib",
+    "export BASH_ENV=/tmp/x",
+    "export PROMPT_COMMAND=id",
+    "export GIT_SSH_COMMAND=id",
+    "export EDITOR=/tmp/x",
+    "export HTTPS_PROXY=http://evil:8080",
+    "export NODE_EXTRA_CA_CERTS=/tmp/evil.pem",
+    'export PATH=".:$PATH"',
+    'export PATH="bin:$PATH"',
+    'export PATH="$HOME/../../tmp:$PATH"',
+  ])("profile line %s is blocked", (line) => {
+    expect(ev({ kind: "append_line", path: "~/.zshrc", line }).decision).toBe("blocked");
+  });
+  it.each(['export PATH="$HOME/.local/bin:$PATH"', 'export PNPM_HOME="$HOME/Library/pnpm"', "export JAVA_HOME=/Library/Java/Home", 'export PATH="/opt/homebrew/bin:$PATH"'])(
+    "profile line %s needs approval but is allowed",
+    (line) => {
+      expect(ev({ kind: "append_line", path: "~/.zshrc", line }).decision).toBe("approve");
+    },
+  );
+});
+
+describe("change risk allowlists", () => {
+  const ev = (change: object) => evaluateStep(step({ id: "c", type: "config_write", change: change as never }), spec([]), { autoRunLow: true });
+  it.each([
+    { kind: "json_merge", path: "~/.claude/settings.json", value: { someFutureKey: { command: "x" } } },
+    { kind: "json_merge", path: "~/.claude.json", value: { theme: "dark" } },
+    { kind: "file_write", path: "project/mise.toml", content: "[hooks]" },
+    { kind: "file_write", path: "project/bunfig.toml", content: "preload" },
+    { kind: "file_write", path: "project/pyproject.toml", content: "[build-system]" },
+    { kind: "file_write", path: "project/.yarnrc.yml", content: "plugins:" },
+  ])("blocks %o", (change) => expect(ev(change).decision).toBe("blocked"));
+
+  it("unknown file types in the workspace need approval, plain notes don't", () => {
+    expect(ev({ kind: "file_write", path: "project/data.json", content: "{}" })).toMatchObject({ risk: "medium", decision: "approve" });
+    expect(ev({ kind: "file_write", path: "project/notes.md", content: "hi" }).decision).toBe("auto");
   });
 });

@@ -16,7 +16,7 @@ export interface AgentPaths {
   workspace: string;
 }
 
-export function agentPaths(env: NodeJS.ProcessEnv = process.env): AgentPaths {
+export function agentPaths(env: Record<string, string | undefined> = process.env): AgentPaths {
   const home = env.AOP_INBOX_HOME ?? homedir();
   const stateDir = path.join(home, ".aop-inbox");
   return {

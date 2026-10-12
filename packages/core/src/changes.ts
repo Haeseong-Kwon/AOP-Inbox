@@ -9,8 +9,12 @@ import type { Change } from "./setup-spec";
  * manifests define install scripts, shell profiles run on every new shell.
  */
 
-// Claude Code settings keys that execute commands or weaken permission checks.
-const CLAUDE_DANGEROUS_KEYS = /^(hooks|statusLine|apiKeyHelper|awsAuthRefresh|awsCredentialExport|otelHeadersHelper|permissions|env|enableAllProjectMcpServers|enabledMcpjsonServers|mcpServers|defaultMode|additionalDirectories|forceLoginMethod)$/;
+// Claude Code settings: ALLOWLIST of keys known to be inert. Anything else (hooks, statusLine,
+// apiKeyHelper, permissions, env, MCP flags, and keys added in future versions) is treated as code.
+const CLAUDE_SAFE_KEYS = new Set(["model", "theme", "outputStyle", "includeCoAuthoredBy", "cleanupPeriodDays", "alwaysThinkingEnabled", "spinnerTipsEnabled", "verbose", "language", "preferredNotifChannel"]);
+
+// Files whose contents are plain data for people; everything else may be read by some tool.
+const DATA_EXTENSIONS = new Set([".md", ".markdown", ".txt", ".csv", ".tsv", ".log", ".html", ".css", ".svg", ".png", ".jpg", ".jpeg", ".gif"]);
 
 const EXECUTABLE_FILE = [
   /(^|\/)\.mcp\.json$/,
@@ -19,15 +23,29 @@ const EXECUTABLE_FILE = [
   /(^|\/)\.vscode\/(tasks|launch|settings)\.json$/,
   /(^|\/)\.envrc$/,
   /(^|\/)\.pnpmfile\.(c|m)?js$/,
+  /(^|\/)(\.?mise(\.local)?\.toml|\.tool-versions|\.mise\/|bunfig\.toml|\.yarnrc(\.yml)?|\.npmrc|pyproject\.toml|setup\.(py|cfg)|tox\.ini|noxfile\.py|brewfile|docker-compose\.ya?ml|compose\.ya?ml|dockerfile|\.devcontainer\/|deno\.jsonc?|\.babelrc|babel\.config\.\w+|\.prettierrc[\w.]*|\.eslintrc[\w.]*|tsconfig[\w.-]*\.json|jest\.config\.\w+|vite\.config\.\w+|\.direnv\/|\.idea\/|\.zed\/|\.cursor\/|\.windsurf\/|\.vscode\/)/,
   /(^|\/)(Makefile|justfile|Taskfile\.ya?ml|Rakefile|Procfile)$/,
   /(^|\/)(\.github\/workflows)\//,
   /\.(sh|bash|zsh|command|tool|scpt|applescript|plist|py|rb|pl|js|mjs|cjs|ts)$/,
 ];
 
-const SIMPLE_EXPORT = /^export [A-Za-z_][A-Za-z0-9_]*=("[^"$`\\]*"|'[^']*'|[A-Za-z0-9_./:@%+=,-]*)$/;
-// PATH additions referencing $HOME/$PATH are common and static enough to allow.
-const PATH_SEGMENT = String.raw`(?:\$HOME|\$PATH|~)?[A-Za-z0-9_./-]*`;
-const PATH_EXPORT = new RegExp(String.raw`^export PATH="${PATH_SEGMENT}(?::${PATH_SEGMENT})*"$`);
+/**
+ * Shell-profile allowlist. Environment variables are an execution channel
+ * (NODE_OPTIONS, DYLD_*, BASH_ENV, PROMPT_COMMAND, GIT_SSH_COMMAND, EDITOR,
+ * proxies, CA bundles…), so only tool-location variables and PATH pass, and
+ * only with absolute or $HOME-based paths.
+ */
+const ABS_PATH = String.raw`(?:\$HOME|~)?/[A-Za-z0-9_./-]*`;
+const TOOL_LOCATION = new RegExp(String.raw`^export ([A-Z][A-Z0-9_]*_(?:HOME|DIR|ROOT|INSTALL)|GOPATH)="?(${ABS_PATH})"?$`);
+const PATH_EXPORT = new RegExp(String.raw`^export PATH="((?:${ABS_PATH}|\$PATH)(?::(?:${ABS_PATH}|\$PATH))*)"$`);
+
+function safeProfileLine(line: string): boolean {
+  const tool = line.match(TOOL_LOCATION);
+  if (tool) return !tool[2].split("/").includes("..");
+  const p = line.match(PATH_EXPORT);
+  if (!p) return false;
+  return p[1].split(":").every((seg) => seg === "$PATH" || (!seg.split("/").includes("..") && !seg.split("/").includes(".")));
+}
 
 export interface ChangeRisk {
   risk: Risk;
@@ -39,14 +57,18 @@ function keysDeep(value: unknown, prefix = ""): string[] {
   return Object.entries(value).flatMap(([k, v]) => [prefix ? `${prefix}.${k}` : k, ...keysDeep(v, prefix ? `${prefix}.${k}` : k)]);
 }
 
-export function changeRisk(change: Change, zone: string): ChangeRisk {
+/**
+ * `resolved` is the absolute path after expansion (and realpath on the device).
+ * Matching is case-insensitive because APFS is: `.CLAUDE/` is `.claude/`.
+ */
+export function changeRisk(change: Change, zone: string, resolved: string = change.path): ChangeRisk {
   const reasons: string[] = [];
   let risk: Risk = "low";
   const raise = (r: Risk, reason: string) => {
     risk = maxRisk(risk, r);
     reasons.push(reason);
   };
-  const p = change.path.replace(/\\/g, "/");
+  const p = path.posix.normalize(resolved.replace(/\\/g, "/")).toLowerCase();
   const base = path.posix.basename(p);
 
   if (EXECUTABLE_FILE.some((re) => re.test(p))) raise("high", `${base} is executed by other tools, so writing it is running code`);
@@ -62,15 +84,17 @@ export function changeRisk(change: Change, zone: string): ChangeRisk {
   if (change.kind === "json_merge") {
     const keys = keysDeep(change.value);
     if (/(^|\/)settings(\.local)?\.json$/.test(p) && (zone === "claude_config" || /\.claude\//.test(p))) {
-      const bad = keys.filter((k) => CLAUDE_DANGEROUS_KEYS.test(k.split(".")[0]));
-      if (bad.length) raise("high", `Changes Claude Code ${[...new Set(bad.map((k) => k.split(".")[0]))].join(", ")}, which can run commands or bypass permission prompts`);
+      const bad = [...new Set(keys.map((k) => k.split(".")[0]))].filter((k) => !CLAUDE_SAFE_KEYS.has(k));
+      if (bad.length) raise("high", `Changes Claude Code ${bad.join(", ")}, which AOP Inbox treats as able to run commands or change permissions`);
     }
-    if (base === ".claude.json" && keys.some((k) => /^(mcpServers|projects)(\.|$)/.test(k))) {
-      raise("high", "MCP servers must be added with an MCP step (claude mcp add), not by editing ~/.claude.json");
-    }
+    if (base === ".claude.json") raise("high", "~/.claude.json is managed by Claude Code; MCP servers are added with an MCP step, not by editing it");
     if (base === "package.json" && keys.some((k) => /^(scripts|bin|config|pnpm|overrides|resolutions)(\.|$)/.test(k))) {
       raise("high", "Adds package scripts or install hooks, which run code");
     }
+  }
+
+  if (zone === "workspace" && !DATA_EXTENSIONS.has(path.posix.extname(p))) {
+    raise("medium", `Other tools may read ${base}, so it needs your review`);
   }
 
   const text = change.kind === "file_write" ? change.content : change.kind === "append_line" ? change.line : "";
@@ -79,7 +103,7 @@ export function changeRisk(change: Change, zone: string): ChangeRisk {
   if (zone === "shell_profile") {
     const lines = text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
     for (const line of lines) {
-      if (!(SIMPLE_EXPORT.test(line) || PATH_EXPORT.test(line))) {
+      if (!safeProfileLine(line)) {
         raise("high", "Adds a shell-profile line that runs code every time a terminal opens");
         break;
       }
