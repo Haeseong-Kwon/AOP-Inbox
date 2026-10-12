@@ -169,7 +169,7 @@ const EXFIL_TOOLS = new Set(["scp", "sftp", "rsync", "nc", "ncat", "netcat", "so
 // Commands with no file arguments and no way to launch others.
 const READ_ONLY = new Set(["echo", "pwd", "which", "whoami", "uname", "date", "true", "false", "sw_vers"]);
 // Read files: low only when every path argument stays inside the workspace (output is reported back).
-const FILE_READERS = new Set(["ls", "cat", "head", "tail", "wc", "grep", "rg", "less", "more", "stat", "file", "diff"]);
+export const FILE_READERS = new Set(["ls", "cat", "head", "tail", "wc", "grep", "rg", "stat", "file", "diff"]);
 // Run another program given as arguments — the inner program is unknowable here.
 const WRAPPERS = new Set(["env", "xargs", "nohup", "time", "timeout", "gtimeout", "nice", "renice", "command", "exec", "builtin", "caffeinate", "script", "watch", "parallel", "stdbuf", "unbuffer", "arch", "open"]);
 const NODE_PMS = new Set(["npm", "pnpm", "yarn", "bun"]);
@@ -320,12 +320,20 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
     const pkgs = positional(seg.argv).slice(args[0] === "global" ? 2 : 1);
     out.installs.push(...pkgs);
     if (registry && !OFFICIAL_REGISTRIES.some((r) => registry.startsWith(r))) raise("high", `Installs from an unofficial registry (${registry})`);
-    if (pkgs.some((p) => /^(https?:|git\+|git:|github:|file:)/.test(p) || /^[\w-]+\/[\w.-]+(#.*)?$/.test(p))) {
-      raise(pkgs.some((p) => /^https?:/.test(p) && !/github\.com/.test(p)) ? "high" : "medium", "Installs from a URL or Git repository instead of the registry");
+    // Registry specs look like `name`, `@scope/name`, optionally `@version`. Anything else is a path, URL, tarball or repo.
+    const registrySpec = (p: string) =>
+      /^(@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*(@[\w.^~<>=| -]+)?$/i.test(p) && !/\.(tgz|tar|tar\.gz|zip)$/i.test(p);
+    if (pkgs.some((p) => /^https?:/.test(p) && !/^https:\/\/(github\.com|codeload\.github\.com)\//.test(p))) {
+      raise("high", "Installs from an arbitrary URL");
+    } else if (pkgs.some((p) => !registrySpec(p))) {
+      raise("medium", "Installs from a local path, tarball or Git repository instead of the registry");
     }
+    // Install scripts (postinstall…) run arbitrary code; only script-free installs are low.
+    const noScripts = args.includes("--ignore-scripts");
     if (global) raise("medium", "Installs a global package (changes your whole machine)");
-    else if (pkgs.length === 0) raise("low", "Installs project dependencies");
-    else raise("low", "Installs a package from the official registry into the workspace");
+    else if (!noScripts) raise("medium", "Package install scripts can run code on your Mac");
+    else if (pkgs.length === 0) raise("low", "Installs project dependencies without running install scripts");
+    else raise("low", "Installs a package from the official registry into the workspace, without install scripts");
   } else if (name === "npx" || name === "pnpx" || (name === "pnpm" && args[0] === "dlx") || (name === "bunx")) {
     raise("medium", "Downloads and runs a package's code");
   } else if (name === "brew") {
@@ -378,6 +386,7 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
     if (args.some((a) => /^(-c|--config-env|--upload-pack|--receive-pack|--exec|-u|--template|--separate-git-dir)(=|$)/.test(a) || /core\.(sshcommand|hookspath|pager|editor|fsmonitor)|ext::|fd::/i.test(a))) {
       raise("high", "Git options that can run arbitrary programs");
     }
+    if (args.some((a) => /^(-C|--git-dir|--work-tree|--output|-o)(=|$)/.test(a))) raise("medium", "Points Git at another folder or writes its output to a file");
     if (args[0] === "clone") {
       const [url = "", dir] = positional(seg.argv).slice(1);
       if (dir) out.writes.push(dir);
@@ -390,6 +399,9 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
     const targets = positional(seg.argv);
     // mv removes its sources, so every path counts; cp/ln only write the destination.
     out.writes.push(...(name === "cp" || name === "ln" ? targets.slice(-1) : targets));
+    if ((name === "cp" || name === "ln") && !targets.slice(0, -1).every(staysLocal)) {
+      raise("medium", `${name === "cp" ? "Copies" : "Links"} files from outside the workspace`);
+    }
     if (name === "ln") raise("medium", "Creates a link that can redirect file access");
     else raise("low", `Creates or changes files (${name})`);
   } else if (name === "node" || name === "python" || name === "python3") {
@@ -398,6 +410,7 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
       raise("low", `Checks the installed ${name} version`);
     } else raise("medium", `Runs a ${name} program`);
   } else if (FILE_READERS.has(name)) {
+    if (args.some((a) => /^--(pre|pre-glob|search-zip)(=|$)|^-z$/.test(a))) raise("high", `${name} option that runs another program`);
     const pathArgs = positional(seg.argv).slice(name === "grep" || name === "rg" ? 1 : 0);
     const recursive = args.some((a) => /^-[a-zA-Z]*[rR]/.test(a));
     if (pathArgs.every(staysLocal) && !(recursive && pathArgs.length === 0 && name !== "ls")) {

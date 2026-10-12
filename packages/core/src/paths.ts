@@ -92,3 +92,31 @@ export const PREVIEW_PATHS: PathContext = {
   stateDir: "/Users/you/.aop-inbox",
   mode: "lexical",
 };
+
+/**
+ * Runtime guard, run on the device immediately before executing argv: every
+ * argument that names an existing file is resolved through symlinks. Static
+ * analysis can't see a symlink planted by an earlier step (e.g. a cloned repo
+ * containing `x -> ~`), this can.
+ */
+export function checkRuntimePaths(
+  argv: string[],
+  cwd: string,
+  ctx: PathContext,
+  opts: { readOnly: boolean },
+): { ok: true } | { ok: false; reason: string } {
+  const candidates = argv.slice(1).flatMap((a) => {
+    if (a.startsWith("-")) return a.includes("=") ? [a.slice(a.indexOf("=") + 1)] : [];
+    return [a];
+  });
+  for (const arg of candidates) {
+    if (!arg || /^[a-z][a-z0-9+.-]*:/i.test(arg)) continue; // URLs, registry specs like npm:x
+    const abs = path.resolve(cwd, expandHome(arg, ctx.home));
+    if (!existsSync(abs) && !arg.includes("/")) continue; // a plain word, not a path
+    const { zone, resolved } = classifyPath(arg, { ...ctx, mode: "real" }, cwd);
+    if (zone === "sensitive") return { ok: false, reason: `Refused: ${arg} resolves to a protected location` };
+    if (zone === "agent_state") return { ok: false, reason: `Refused: ${arg} points into AOP Inbox's own state` };
+    if (opts.readOnly && zone !== "workspace") return { ok: false, reason: `Refused: ${arg} resolves outside the workspace (${resolved})` };
+  }
+  return { ok: true };
+}
