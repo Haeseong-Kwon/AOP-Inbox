@@ -4,7 +4,7 @@ pnpm = "12.4.2"
 
 [tasks.setup]
 description = "Install deps, start Postgres, migrate, seed"
-run = "pnpm setup"
+run = "pnpm bootstrap"
 
 [tasks.dev]
 run = "pnpm dev"

@@ -23,6 +23,6 @@ export default defineConfig({
     },
     { name: "mobile", dependencies: ["setup"], use: { ...devices["Pixel 7"], storageState: "tests/e2e/.auth/user.json" } },
   ],
-  // Uses the dev server + dev database (run `pnpm setup` first). Tests clean up what they create.
+  // Uses the dev server + dev database (run `pnpm bootstrap` first). Tests clean up what they create.
   webServer: { command: "pnpm dev", url: `http://localhost:${PORT}/login`, reuseExistingServer: true, timeout: 120_000 },
 });

@@ -5,8 +5,9 @@ async function openHome(page: Page) {
   await expect(page.getByRole("heading", { name: /Your knowledge/ })).toBeVisible();
 }
 
-test("capture a note, find it in the inbox, open it, and search for it", async ({ page, isMobile }) => {
-  const token = `zephyr${Date.now().toString(36)}`;
+test("capture a note, find it in the inbox, open it, and search for it", async ({ page, isMobile }, testInfo) => {
+  // Unique per worker: desktop and mobile run in parallel against the same database.
+  const token = `zephyr${testInfo.project.name}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const note = `Idea ${token}: batch AI agents with worktrees for parallel feature work.`;
   await openHome(page);
 
@@ -38,11 +39,11 @@ test("capture a note, find it in the inbox, open it, and search for it", async (
 
   // Clean up.
   const res = await page.request.delete(`/api/items/${itemId}`, { headers: { origin: new URL(page.url()).origin } });
-  expect(res.status()).toBe(204);
+  expect(res.status(), await res.text()).toBe(204);
 });
 
 test("capturing the same link twice reports a duplicate", async ({ page }) => {
-  const url = `https://example.org/aop-e2e/${Date.now()}?utm_source=test`;
+  const url = `https://example.org/aop-e2e/${Date.now()}-${Math.random().toString(36).slice(2, 8)}?utm_source=test`;
   await openHome(page);
   const origin = new URL(page.url()).origin;
   const first = await page.request.post("/api/capture", { data: { input: url }, headers: { origin } });
