@@ -10,8 +10,15 @@ interface LoginFormProps {
   dev: { email: string; password: string } | null;
 }
 
-function safeNext(next: string | null): string {
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+/** Only same-origin paths; resolves tricks like "/\\evil.com" or "//evil.com" before comparing. */
+export function safeNext(next: string | null, origin: string): string {
+  if (!next) return "/";
+  try {
+    const url = new URL(next, origin);
+    return url.origin === origin ? `${url.pathname}${url.search}${url.hash}` : "/";
+  } catch {
+    return "/";
+  }
 }
 
 export function LoginForm({ dev }: LoginFormProps) {
@@ -39,7 +46,7 @@ export function LoginForm({ dev }: LoginFormProps) {
         );
         return;
       }
-      window.location.href = safeNext(params.get("next"));
+      window.location.href = safeNext(params.get("next"), window.location.origin);
     } catch {
       setError("You're offline. Check your connection and try again.");
     } finally {

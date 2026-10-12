@@ -25,10 +25,10 @@ export function displayTitle(item: Pick<Item, "aiTitle" | "originalTitle" | "sou
 
 // Tags / primary collection are folded into the row to avoid N+1 queries.
 const tagsSql = sql<string[]>`array(
-  select t.name from item_tags it join tags t on t.id = it.tag_id where it.item_id = ${items.id} order by t.name limit 4)`;
+  select t.name from item_tags it join tags t on t.id = it.tag_id where it.item_id = "items"."id" order by t.name limit 4)`;
 const collectionSql = sql<string | null>`(
   select c.name from collection_items ci join collections c on c.id = ci.collection_id
-  where ci.item_id = ${items.id} order by (c.parent_id is null), c.created_at limit 1)`;
+  where ci.item_id = "items"."id" order by (c.parent_id is null), c.created_at limit 1)`;
 
 type Row = Item & { tags: string[]; collection: string | null };
 
@@ -74,10 +74,10 @@ export async function listItems(userId: string, q: ListQuery): Promise<ItemPage>
   }
   if (q.collection) {
     where.push(sql`exists (select 1 from collection_items ci join collections c on c.id = ci.collection_id
-      where ci.item_id = ${items.id} and (c.id = ${q.collection} or c.parent_id = ${q.collection}))`);
+      where ci.item_id = "items"."id" and (c.id = ${q.collection} or c.parent_id = ${q.collection}))`);
   }
   if (q.tag) {
-    where.push(sql`exists (select 1 from item_tags it join tags t on t.id = it.tag_id where it.item_id = ${items.id} and t.slug = ${q.tag})`);
+    where.push(sql`exists (select 1 from item_tags it join tags t on t.id = it.tag_id where it.item_id = "items"."id" and t.slug = ${q.tag})`);
   }
   const order = {
     recent: [desc(items.savedAt)],

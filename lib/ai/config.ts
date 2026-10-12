@@ -14,7 +14,7 @@ const DEFAULT_BASE_URLS: Record<Exclude<AIProviderName, "mock">, string> = {
   local: "http://localhost:11434/v1",
 };
 
-export function getAIConfig(env: NodeJS.ProcessEnv = process.env): AIConfig {
+export function getAIConfig(env: Record<string, string | undefined> = process.env): AIConfig {
   const requested = (env.AI_PROVIDER ?? "openai").toLowerCase() as AIProviderName;
   const apiKey = env.AI_API_KEY ?? "";
   // Without a key (local servers excepted) we fall back to the offline analyzer instead of failing every job.

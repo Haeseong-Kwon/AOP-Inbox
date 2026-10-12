@@ -3,16 +3,16 @@
 import { Check, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { apiSend } from "@/lib/client/api";
 import type { CaptureResponse } from "@/lib/items/types";
 
-type State = { kind: "saving" } | { kind: "saved"; res: CaptureResponse } | { kind: "error"; message: string };
+type State = { kind: "confirm" } | { kind: "saving" } | { kind: "saved"; res: CaptureResponse } | { kind: "error"; message: string };
 
-export function ShareCapture() {
+export function ShareCapture({ autoSave }: { autoSave: boolean }) {
   const params = useSearchParams();
-  const [state, setState] = useState<State>({ kind: "saving" });
+  const [state, setState] = useState<State>(autoSave ? { kind: "saving" } : { kind: "confirm" });
   const started = useRef(false);
   const url = params.get("url")?.trim();
   const text = params.get("text")?.trim();
@@ -20,7 +20,7 @@ export function ShareCapture() {
   // Android puts the link in `text` more often than in `url`.
   const input = url || text || "";
 
-  useEffect(() => {
+  const save = useCallback(() => {
     if (started.current || !input) return;
     started.current = true;
     const note = url && text && !text.includes(url) ? text : undefined;
@@ -28,6 +28,10 @@ export function ShareCapture() {
       .then((res) => setState({ kind: "saved", res }))
       .catch((e: Error) => setState({ kind: "error", message: e.message }));
   }, [input, url, text, title]);
+
+  useEffect(() => {
+    if (autoSave) save();
+  }, [autoSave, save]);
 
   if (!input || state.kind === "error") {
     return (
@@ -37,6 +41,27 @@ export function ShareCapture() {
         <Button asChild variant="outline">
           <Link href="/">Open AOP Inbox</Link>
         </Button>
+      </div>
+    );
+  }
+  if (state.kind === "confirm") {
+    return (
+      <div className="flex max-w-sm flex-col items-center gap-4 text-center">
+        <p className="text-[17px] font-medium">Save this to your inbox?</p>
+        <p className="line-clamp-3 font-mono text-xs break-all text-muted-foreground">{input}</p>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => {
+              setState({ kind: "saving" });
+              save();
+            }}
+          >
+            Save
+          </Button>
+          <Button asChild variant="ghost">
+            <Link href="/">Cancel</Link>
+          </Button>
+        </div>
       </div>
     );
   }
