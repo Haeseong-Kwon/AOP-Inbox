@@ -1,0 +1,22 @@
+{
+  "name": "@aop-inbox/agent",
+  "version": "0.1.0",
+  "description": "AOP Inbox Local Agent — runs approved, verified setups on your Mac.",
+  "type": "module",
+  "bin": {
+    "aop-inbox": "dist/cli.js"
+  },
+  "files": ["dist", "prompts"],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "os": ["darwin"],
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node dist/cli.js"
+  },
+  "devDependencies": {
+    "@aop-inbox/core": "workspace:*",
+    "esbuild": "0.25.12"
+  }
+}

@@ -15,6 +15,13 @@
       "when": 1791793367108,
       "tag": "0001_action_layer",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791794636488,
+      "tag": "0002_auth_throttle",
+      "breakpoints": true
     }
   ]
 }

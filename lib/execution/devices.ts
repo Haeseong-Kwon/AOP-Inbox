@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
-import { devicePairings, devices, type Device } from "@/db/schema";
+import { authThrottle, devicePairings, devices, type Device } from "@/db/schema";
 import { db } from "@/lib/db";
 import { HttpError } from "@/lib/http";
 
@@ -27,16 +27,39 @@ export async function createPairingCode(userId: string): Promise<{ code: string;
   return { code: `${raw.slice(0, 3)}-${raw.slice(3)}`, expiresAt };
 }
 
-// Global throttle on failed pairing attempts (codes are short-lived, but guessing must stay impractical).
-const failures: number[] = [];
-function tooManyFailures(): boolean {
-  const cutoff = Date.now() - PAIRING_TTL_MS;
-  while (failures.length && failures[0] < cutoff) failures.shift();
-  return failures.length >= 30;
+// Failed-attempt windows, stored in Postgres so they hold across restarts and instances.
+const PER_CLIENT_FAILURES = 10;
+const GLOBAL_FAILURES = 100;
+
+async function failuresFor(key: string): Promise<number> {
+  const [row] = await db.select().from(authThrottle).where(eq(authThrottle.key, key));
+  if (!row || Date.now() - row.windowStart.getTime() > PAIRING_TTL_MS) return 0;
+  return row.count;
 }
 
-export async function pairDevice(input: { code: string; name: string; platform: string; arch: string; agentVersion: string }): Promise<{ deviceId: string; token: string }> {
-  if (tooManyFailures()) throw new HttpError(429, "Too many pairing attempts. Create a new code and try again in a few minutes.");
+async function recordFailure(key: string): Promise<number> {
+  const [row] = await db
+    .insert(authThrottle)
+    .values({ key, count: 1, windowStart: new Date() })
+    .onConflictDoUpdate({
+      target: authThrottle.key,
+      set: {
+        count: sql`case when ${authThrottle.windowStart} < now() - interval '10 minutes' then 1 else ${authThrottle.count} + 1 end`,
+        windowStart: sql`case when ${authThrottle.windowStart} < now() - interval '10 minutes' then now() else ${authThrottle.windowStart} end`,
+      },
+    })
+    .returning({ count: authThrottle.count });
+  return row.count;
+}
+
+export async function pairDevice(
+  input: { code: string; name: string; platform: string; arch: string; agentVersion: string },
+  client = "unknown",
+): Promise<{ deviceId: string; token: string }> {
+  const clientKey = `pair:client:${client}`;
+  if ((await failuresFor(clientKey)) >= PER_CLIENT_FAILURES || (await failuresFor("pair:global")) >= GLOBAL_FAILURES) {
+    throw new HttpError(429, "Too many pairing attempts. Create a new code and try again in a few minutes.");
+  }
   const codeHash = sha(normalizeCode(input.code));
   const result = await db.transaction(async (tx) => {
     const [pairing] = await tx
@@ -54,10 +77,20 @@ export async function pairDevice(input: { code: string; name: string; platform: 
     return { deviceId: device.id, token };
   });
   if (!result) {
-    failures.push(Date.now());
+    await recordFailure(clientKey);
+    if ((await recordFailure("pair:global")) >= GLOBAL_FAILURES) {
+      // Someone is guessing at scale: burn every live code so a guess can't land.
+      await db.update(devicePairings).set({ usedAt: new Date() }).where(isNull(devicePairings.usedAt));
+    }
     throw new HttpError(401, "That code is invalid or has expired. Create a new one in Settings → Local Agent.");
   }
   return result;
+}
+
+/** Fresh row on every use — a revoked or paused device must stop immediately, not on reconnect. */
+export async function currentDevice(id: string): Promise<Device | null> {
+  const [device] = await db.select().from(devices).where(and(eq(devices.id, id), isNull(devices.revokedAt)));
+  return device ?? null;
 }
 
 export async function authenticateDevice(req: Request): Promise<Device> {

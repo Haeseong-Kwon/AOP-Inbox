@@ -273,6 +273,15 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
+  packages/agent:
+    devDependencies:
+      '@aop-inbox/core':
+        specifier: workspace:*
+        version: link:../core
+      esbuild:
+        specifier: 0.25.12
+        version: 0.25.12
+
   packages/core:
     dependencies:
       zod:

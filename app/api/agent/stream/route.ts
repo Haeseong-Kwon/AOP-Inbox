@@ -1,6 +1,6 @@
 import { HEARTBEAT_MS } from "@aop-inbox/core";
 import { withDevice } from "@/lib/execution/agent-http";
-import { touchDevice } from "@/lib/execution/devices";
+import { currentDevice, touchDevice } from "@/lib/execution/devices";
 import { messagesForDevice } from "@/lib/execution/gateway";
 import { errorMessage, log } from "@/lib/log";
 
@@ -23,7 +23,10 @@ export const GET = withDevice(async (req, device) => {
       try {
         await touchDevice(device.id);
         while (!closed && Date.now() - started < MAX_STREAM_MS) {
-          for (const message of await messagesForDevice(device)) {
+          // Re-read every tick: revocation, pause and auto-run changes apply immediately.
+          const fresh = await currentDevice(device.id);
+          if (!fresh) break;
+          for (const message of await messagesForDevice(fresh)) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(message)}\n\n`));
           }
           if (Date.now() - lastPing > HEARTBEAT_MS - 5000) {

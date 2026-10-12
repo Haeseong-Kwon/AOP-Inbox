@@ -44,6 +44,17 @@ describe("pairing", () => {
   });
 });
 
+describe("pairing throttle", () => {
+  it("locks a client out after repeated wrong codes, even for a valid code", async () => {
+    for (let i = 0; i < 10; i++) {
+      await expect(pairDevice({ code: "QQQ-QQQ", name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" }, "1.2.3.4")).rejects.toThrow();
+    }
+    const { code } = await createPairingCode(userId);
+    await expect(pairDevice({ code, name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" }, "1.2.3.4")).rejects.toThrow(/Too many/);
+    await expect(pairDevice({ code, name: "x", platform: "darwin", arch: "arm64", agentVersion: "0.1.0" }, "5.6.7.8")).resolves.toMatchObject({ token: expect.any(String) });
+  });
+});
+
 describe("execution lifecycle (simulated agent)", () => {
   it("dry run → approval → execute → verify → done → undo", async () => {
     const itemId = await executableItem();
