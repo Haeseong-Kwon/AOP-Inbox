@@ -1,0 +1,21 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aop_local_dev}
+      POSTGRES_DB: aop_inbox
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - aop_pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aop -d aop_inbox"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  aop_pgdata:

@@ -1,0 +1,24 @@
+import { NextResponse } from "next/server";
+import { collectionTree } from "@/lib/collections/repository";
+import { homeStats, listItems } from "@/lib/items/repository";
+import { withUser } from "@/lib/http";
+
+export const GET = withUser(async (_req, user) => {
+  const base = { cursor: 0, sort: "recent" as const };
+  const [stats, recent, unread, highValue, continueReading, collections] = await Promise.all([
+    homeStats(user.id),
+    listItems(user.id, { ...base, limit: 6 }),
+    listItems(user.id, { ...base, state: "unread", limit: 5 }),
+    listItems(user.id, { ...base, state: "high-value", sort: "importance", limit: 4 }),
+    listItems(user.id, { ...base, state: "read", sort: "viewed", limit: 3 }),
+    collectionTree(user.id),
+  ]);
+  return NextResponse.json({
+    stats,
+    recent: recent.items,
+    unread: unread.items,
+    highValue: highValue.items,
+    continueReading: continueReading.items,
+    collections: [...collections].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 6),
+  });
+});
