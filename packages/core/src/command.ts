@@ -173,8 +173,6 @@ export const FILE_READERS = new Set(["ls", "cat", "head", "tail", "wc", "grep", 
 // Run another program given as arguments — the inner program is unknowable here.
 const WRAPPERS = new Set(["env", "xargs", "nohup", "time", "timeout", "gtimeout", "nice", "renice", "command", "exec", "builtin", "caffeinate", "script", "watch", "parallel", "stdbuf", "unbuffer", "arch", "open"]);
 const NODE_PMS = new Set(["npm", "pnpm", "yarn", "bun"]);
-// Commands classified by the dedicated checks at the top of analyzeSegment.
-const HANDLED_ABOVE = new Set(["rm", "curl", "wget", "chmod", "chown", "security", "eval", "source", ".", "base64", "xxd", "find", "defaults", "printenv"]);
 const OFFICIAL_REGISTRIES = ["https://registry.npmjs.org", "https://registry.yarnpkg.com", "https://pypi.org"];
 
 /** Paths that must never be read or written by an automated step. */
@@ -239,13 +237,19 @@ const staysLocal = (arg: string) => !arg.startsWith("/") && !arg.startsWith("~")
 function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) {
   const name = commandName(seg.argv);
   const args = seg.argv.slice(1);
+  // Default-deny: a segment that no rule below explicitly classifies ends up medium.
+  let classified = false;
   const raise = (risk: Risk, reason: string, deny = false) => {
     out.risk = maxRisk(out.risk, risk);
     out.reasons.push(reason);
     if (deny) out.denied = true;
+    classified = true;
   };
 
-  if (!name) return;
+  if (!name) {
+    if (seg.redirects.length || Object.keys(seg.env).length) raise("high", "Only redirects or sets variables, which needs a shell");
+    return;
+  }
   if (seg.dynamic) raise("high", "Uses shell expansion ($VAR, globs or substitution), so the real command isn't known in advance");
   for (const key of Object.keys(seg.env)) {
     if (/^(PATH|LD_PRELOAD|LD_LIBRARY_PATH|DYLD_\w+|NODE_OPTIONS|BASH_ENV|ENV|PROMPT_COMMAND)$/.test(key)) {
@@ -329,7 +333,10 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
       raise("medium", "Installs from a local path, tarball or Git repository instead of the registry");
     }
     // Install scripts (postinstall…) run arbitrary code; only script-free installs are low.
-    const noScripts = args.includes("--ignore-scripts");
+    // npm honours the LAST occurrence: `--ignore-scripts --ignore-scripts=false` runs scripts.
+    const scriptFlags = args.filter((a) => /^--ignore-scripts(=|$)/.test(a));
+    const lastFlag = scriptFlags.at(-1);
+    const noScripts = lastFlag !== undefined && (lastFlag === "--ignore-scripts" || /^--ignore-scripts=(true|1)$/i.test(lastFlag));
     if (global) raise("medium", "Installs a global package (changes your whole machine)");
     else if (!noScripts) raise("medium", "Package install scripts can run code on your Mac");
     else if (pkgs.length === 0) raise("low", "Installs project dependencies without running install scripts");
@@ -422,8 +429,6 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
     raise("low", "Reads information only");
   } else if (name === "export") {
     raise("low", "Sets an environment variable for this session only");
-  } else if (!HANDLED_ABOVE.has(name) && !PRIVILEGE.has(name) && !SYSTEM_TOOLS.has(name) && !EXFIL_TOOLS.has(name) && !INTERPRETERS.has(name)) {
-    raise("medium", `Runs ${name}, which AOP Inbox doesn't recognise`);
   }
 
   if (seg.argv.some((a) => referencesSensitivePath(a)) || seg.redirects.some((r) => referencesSensitivePath(r.target))) {
@@ -432,6 +437,7 @@ function analyzeSegment(seg: Segment, out: CommandAnalysis, previous?: Segment) 
   for (const r of seg.redirects) {
     if (r.op.includes(">")) out.writes.push(r.target);
   }
+  if (!classified) raise("medium", `Runs ${name}${args[0] ? ` ${args[0]}` : ""}, which AOP Inbox doesn't recognise as safe`);
 }
 
 /** Analyze an argv that never went through a shell (MCP server commands, structured specs). */

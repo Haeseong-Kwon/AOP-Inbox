@@ -6,7 +6,12 @@ import { db } from "@/lib/db";
 import { errorMessage, log } from "@/lib/log";
 import { getAIConfig, type AIConfig } from "./config";
 import { mockAnalyze, mockEmbed } from "./mock";
-import { analyzeItemInstructions, analyzeItemPrompt, type AnalyzeItemInput } from "./prompts/analyze-item";
+import { ANALYZE_ITEM_VERSION, analyzeItemInstructions, analyzeItemPrompt, type AnalyzeItemInput } from "./prompts/analyze-item";
+import { EXTRACT_FACTS_VERSION, extractFactsInstructions, extractFactsPrompt } from "./prompts/extract-facts";
+import { STRUCTURE_SETUP_VERSION, structureSetupInstructions, structureSetupPrompt } from "./prompts/structure-setup";
+import { factsDraftSchema, specDraftSchema, type FactsDraft, type SpecDraft } from "@/lib/actions/llm-schemas";
+import { mockExtractFacts, mockStructure } from "@/lib/actions/mock-actions";
+import type { ExtractedFacts } from "@aop-inbox/core";
 import { askInboxInstructions, askInboxPrompt, type AskContextItem } from "./prompts/ask-inbox";
 import { itemAnalysisSchema, type ItemAnalysis } from "./schemas";
 
@@ -25,23 +30,50 @@ function sdk(config: AIConfig) {
   });
 }
 
+// USD per 1M tokens [input, output]. Override with AI_PRICES='{"model":[in,out]}'. Unknown models log no cost.
+const DEFAULT_PRICES: Record<string, [number, number]> = {
+  "gpt-4.1-mini": [0.4, 1.6],
+  "gpt-4.1": [2, 8],
+  "gpt-4.1-nano": [0.1, 0.4],
+  "text-embedding-3-small": [0.02, 0],
+  "text-embedding-3-large": [0.13, 0],
+};
+
+function estimateCost(model: string, input?: number, output?: number): number | undefined {
+  let prices = DEFAULT_PRICES;
+  try {
+    if (process.env.AI_PRICES) prices = { ...DEFAULT_PRICES, ...(JSON.parse(process.env.AI_PRICES) as typeof DEFAULT_PRICES) };
+  } catch {
+    // ignore malformed override
+  }
+  const p = prices[model] ?? prices[model.split("/").pop() ?? ""];
+  if (!p || input === undefined) return undefined;
+  return (input * p[0] + (output ?? 0) * p[1]) / 1_000_000;
+}
+
 async function recordUsage(entry: {
   userId?: string;
   operation: string;
   model: string;
   startedAt: number;
   success: boolean;
+  promptVersion?: number;
   usage?: Partial<LanguageModelUsage> | { tokens?: number };
 }) {
   const latencyMs = Date.now() - entry.startedAt;
   const usage = entry.usage as { inputTokens?: number; outputTokens?: number; tokens?: number } | undefined;
   const inputTokens = usage?.inputTokens ?? usage?.tokens;
-  log.info("ai.call", { operation: entry.operation, model: entry.model, latencyMs, success: entry.success, inputTokens, outputTokens: usage?.outputTokens });
+  const provider = getAIConfig().provider;
+  const estimatedCostUsd = estimateCost(entry.model, inputTokens, usage?.outputTokens);
+  log.info("ai.call", { operation: entry.operation, provider, model: entry.model, latencyMs, success: entry.success, inputTokens, outputTokens: usage?.outputTokens, estimatedCostUsd });
   try {
     await db.insert(aiUsage).values({
       userId: entry.userId,
       operation: entry.operation,
+      provider,
       model: entry.model,
+      promptVersion: entry.promptVersion,
+      estimatedCostUsd,
       inputTokens,
       outputTokens: usage?.outputTokens,
       latencyMs,
@@ -72,7 +104,7 @@ export async function analyzeItem(input: AnalyzeItemInput, userId?: string): Pro
       maxRetries: 2,
       temperature: 0.2,
     });
-    await recordUsage({ userId, operation: "analyze_item", model, startedAt, success: true, usage: result.usage });
+    await recordUsage({ userId, operation: "analyze_item", model, startedAt, success: true, usage: result.usage, promptVersion: ANALYZE_ITEM_VERSION });
     return { analysis: result.output, model };
   } catch (error) {
     await recordUsage({ userId, operation: "analyze_item", model, startedAt, success: false });
@@ -145,5 +177,59 @@ async function* mockAnswer(question: string, items: AskContextItem[]): AsyncGene
   yield `_Offline mode — add an AI key for synthesized answers. Here is what your inbox has on “${question.slice(0, 80)}”:_\n\n`;
   for (const it of items.slice(0, 6)) {
     yield `- **${it.title}** — ${it.userNote || it.summary || "No summary yet."} [${it.index}]\n`;
+  }
+}
+
+/* ─── Action layer: two isolated stages ────────────────────────────────── */
+
+/** Stage 1 — facts from untrusted content. Cheap model; content wrapped as data. */
+export async function extractFacts(
+  input: { source: "document" | "note"; text: string; title?: string | null; creator?: string | null },
+  userId?: string,
+): Promise<{ facts: FactsDraft; model: string }> {
+  const config = getAIConfig();
+  const model = config.models.fast;
+  if (config.provider === "mock") return { facts: mockExtractFacts(input.text, input.source), model };
+  const startedAt = Date.now();
+  try {
+    const result = await generateText({
+      model: sdk(config).chatModel(model),
+      instructions: extractFactsInstructions,
+      prompt: extractFactsPrompt(input),
+      output: Output.object({ schema: factsDraftSchema }),
+      maxRetries: 2,
+      temperature: 0,
+    });
+    await recordUsage({ userId, operation: "extract_facts", model, startedAt, success: true, usage: result.usage, promptVersion: EXTRACT_FACTS_VERSION });
+    return { facts: result.output, model };
+  } catch (error) {
+    await recordUsage({ userId, operation: "extract_facts", model, startedAt, success: false, promptVersion: EXTRACT_FACTS_VERSION });
+    throw error;
+  }
+}
+
+/** Stage 2 — plan from FACTS only (never the raw content). Strong model. */
+export async function structureSetup(
+  input: { facts: ExtractedFacts; title?: string | null; platform: string; creator?: string | null },
+  userId?: string,
+): Promise<{ draft: SpecDraft; model: string }> {
+  const config = getAIConfig();
+  const model = config.models.strong;
+  if (config.provider === "mock") return { draft: mockStructure(input.facts, { title: input.title }), model };
+  const startedAt = Date.now();
+  try {
+    const result = await generateText({
+      model: sdk(config).chatModel(model),
+      instructions: structureSetupInstructions,
+      prompt: structureSetupPrompt(input),
+      output: Output.object({ schema: specDraftSchema }),
+      maxRetries: 2,
+      temperature: 0,
+    });
+    await recordUsage({ userId, operation: "structure_setup", model, startedAt, success: true, usage: result.usage, promptVersion: STRUCTURE_SETUP_VERSION });
+    return { draft: result.output, model };
+  } catch (error) {
+    await recordUsage({ userId, operation: "structure_setup", model, startedAt, success: false, promptVersion: STRUCTURE_SETUP_VERSION });
+    throw error;
   }
 }

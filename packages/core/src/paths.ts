@@ -120,3 +120,20 @@ export function checkRuntimePaths(
   }
   return { ok: true };
 }
+
+/** Project files that change what a package manager installs or execute code during install. */
+export const PACKAGE_MANAGER_CONFIG_FILES = [".npmrc", ".yarnrc", ".yarnrc.yml", ".pnpmfile.cjs", ".pnpmfile.mjs", "bunfig.toml", "pip.conf", "pip.ini", ".pip/pip.conf", "uv.toml"];
+const PACKAGE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun", "npx", "pnpx", "bunx", "pip", "pip3", "pipx", "uv", "uvx"]);
+
+/** Refuse package-manager runs in a folder whose config could redirect registries or run code (e.g. from a cloned repo). */
+export function checkPackageManagerConfig(argv: string[], cwd: string): { ok: true } | { ok: false; reason: string } {
+  const name = (argv[0] ?? "").split("/").pop() ?? "";
+  if (!PACKAGE_MANAGERS.has(name)) return { ok: true };
+  for (let dir = cwd; ; dir = path.dirname(dir)) {
+    for (const file of PACKAGE_MANAGER_CONFIG_FILES) {
+      if (existsSync(path.join(dir, file))) return { ok: false, reason: `Refused: ${path.join(dir, file)} could change what ${name} installs or runs` };
+    }
+    if (path.dirname(dir) === dir || existsSync(path.join(dir, ".aop-inbox-workspace"))) break;
+  }
+  return { ok: true };
+}

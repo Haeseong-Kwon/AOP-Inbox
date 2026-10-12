@@ -167,3 +167,28 @@ describe("runtime path guard", async () => {
     expect(checkRuntimePaths(["npm", "install", "zod"], ws, ctx, { readOnly: false }).ok).toBe(true);
   });
 });
+
+describe("default-deny and flag semantics", () => {
+  it.each(["security list-keychains", "base64 ~/.zsh_history", "xxd secrets.bin", "defaults read", "mysterytool"])("%s is not low", (cmd) => {
+    expect(analyzeCommand(cmd).risk).not.toBe("low");
+  });
+  it("uses the last --ignore-scripts flag, like npm", () => {
+    expect(analyzeCommand("npm install zod --ignore-scripts --ignore-scripts=false").risk).toBe("medium");
+    expect(analyzeCommand("npm install zod --ignore-scripts=false --ignore-scripts").risk).toBe("low");
+  });
+});
+
+describe("package manager config guard", async () => {
+  const { mkdtempSync, writeFileSync, realpathSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { checkPackageManagerConfig } = await import("@aop-inbox/core");
+  it("refuses installs next to a project .npmrc / .pnpmfile.cjs", () => {
+    const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "aop-pm-")));
+    writeFileSync(path.join(dir, ".aop-inbox-workspace"), "");
+    expect(checkPackageManagerConfig(["npm", "install", "zod"], dir).ok).toBe(true);
+    writeFileSync(path.join(dir, ".pnpmfile.cjs"), "module.exports = {}");
+    expect(checkPackageManagerConfig(["pnpm", "add", "zod"], dir).ok).toBe(false);
+    expect(checkPackageManagerConfig(["node", "--version"], dir).ok).toBe(true);
+  });
+});
