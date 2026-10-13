@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { bearerCaptureToken, consumeCaptureToken } from "@/lib/capture-tokens";
+import { readBodyText } from "@/lib/body";
 import { HttpError } from "@/lib/errors";
 import { drainQueue } from "@/lib/ingestion/pipeline";
 import { captureItem } from "@/lib/items/capture";
@@ -18,16 +19,17 @@ const MAX_BODY = 64_000;
 
 async function readFields(req: Request) {
   const type = req.headers.get("content-type") ?? "";
-  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) throw new HttpError(413, "That request is too large.");
   if (type.includes("application/json")) return readJson(req, captureFieldsSchema, MAX_BODY);
-  if (type.includes("application/x-www-form-urlencoded") || type.includes("multipart/form-data")) {
-    const form = await req.formData();
-    const pick = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
+  // Every other body is read through the same streaming byte cap before parsing.
+  const raw = await readBodyText(req, MAX_BODY);
+  if (type.includes("application/x-www-form-urlencoded")) {
+    const form = new URLSearchParams(raw);
+    const pick = (k: string) => form.get(k) ?? undefined;
     return captureFieldsSchema.parse({ input: pick("input"), url: pick("url"), text: pick("text"), title: pick("title"), note: pick("note") });
   }
+  if (type.includes("multipart/form-data")) throw new HttpError(415, "Send JSON, a form, or plain text.");
   // Plain text body (e.g. a Shortcut sending "Shortcut Input" as the request body).
-  const text = (await req.text()).slice(0, 20_000);
-  return captureFieldsSchema.parse({ input: text });
+  return captureFieldsSchema.parse({ input: raw.slice(0, 20_000) });
 }
 
 async function capture(req: Request, userId: string): Promise<Response> {

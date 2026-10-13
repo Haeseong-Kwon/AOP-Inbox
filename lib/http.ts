@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireApiUser, unauthorized, UnauthorizedError, type SessionUser } from "@/lib/auth/session";
+import { readBodyText } from "@/lib/body";
 import { HttpError } from "@/lib/errors";
 import { errorMessage, log } from "@/lib/log";
 
@@ -34,11 +35,10 @@ export function withUser<C>(handler: (req: Request, user: SessionUser, ctx: C) =
 }
 
 export async function readJson<T>(req: Request, schema: z.ZodType<T>, maxBytes = 2_000_000): Promise<T> {
-  const length = Number(req.headers.get("content-length") ?? 0);
-  if (length > maxBytes) throw new HttpError(413, "That request is too large.");
+  const raw = await readBodyText(req, maxBytes);
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(raw);
   } catch {
     throw new HttpError(400, "Invalid JSON body");
   }
