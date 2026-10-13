@@ -12,3 +12,10 @@ Read `PROJECT_STATUS.md` first (state, limits, priorities) and `docs/adr/` befor
 - Never log note/message text. Never add Instagram scraping, private APIs, or credential handling.
 - Cache Components is on: anything reading cookies/headers/params/pathname must sit under `<Suspense>`.
 - Raw SQL inside `db.select({...})` subqueries: write `"items"."id"`, not `${items.id}` (Drizzle renders it unqualified).
+
+## Action layer
+- Read `docs/action-layer-architecture.md` and `docs/execution-security.md` before touching `packages/core`, `lib/actions`, `lib/execution` or `packages/agent`.
+- Safety rules live in `packages/core` and run on BOTH server and device. Never add an execution path that bypasses `evaluateSpec` on the device.
+- Risk only goes up: the LLM's label is a floor. New command/file rules need red-team cases in `tests/unit/core/*` and, ideally, a fixture in `evals/fixtures.json` (`pnpm eval`).
+- Never test against the real `~/.claude`: use `packages/agent/test/helpers.ts#sandbox()` (temp HOME, fake `claude`).
+- Execution status changes only via `transition()` in `lib/execution/jobs.ts`.

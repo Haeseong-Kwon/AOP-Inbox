@@ -181,7 +181,7 @@ export function SetupReview({ itemId }: { itemId: string }) {
         <p className="text-[13px] font-medium text-signal">Setup</p>
         <h1 className="text-[24px] leading-tight font-semibold tracking-[-0.015em] text-balance sm:text-[26px]">{spec.source.title ?? spec.summary}</h1>
         <p className="text-[15px] leading-relaxed text-muted-foreground">{spec.summary}</p>
-        <dl className="grid grid-cols-2 gap-4 rounded-lg border px-4 py-3.5 sm:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-4 rounded-lg border px-4 py-3.5 lg:grid-cols-4">
           <Meta label="Source">
             <span className="inline-flex items-center gap-1.5">
               <SourceIcon type={spec.source.platform as never} className="text-muted-foreground" />

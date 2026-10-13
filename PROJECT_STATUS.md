@@ -1,6 +1,6 @@
 # PROJECT_STATUS — AOP Inbox
 
-_Last updated: 2026-10-12. Written for the next engineer or agent picking this up._
+_Last updated: 2026-10-13 (action layer added). Written for the next engineer or agent picking this up._
 
 ## What exists
 
@@ -66,9 +66,35 @@ Auth (Better Auth, allow-listed sign-up, rate limits) · onboarding (3 steps) ·
 
 No Instagram credentials, cookies, private endpoints, DM crawling, automated browsers or media downloads. Collection paths are: share target / paste (new items) and Meta's official “Download your information” export (history). Export parsing happens in the browser and only `{url, timestamp}` is sent; message bodies are never stored or logged.
 
+## Action layer (2026-10-13)
+
+Phase 0 audit: `docs/action-layer-audit.md`. Architecture: `docs/action-layer-architecture.md`.
+
+**Implemented**
+- Intent classification on analysis (`content_intent`, actionability, what-you-can-do); old items re-analyzed lazily on open (no forced backfill).
+- Two-stage extraction (facts → plan), content-keyed fact cache, deterministic evidence gate, secret redaction, `SetupSpec` v1 with revisions, guide-gated content + “Attach guide”.
+- `@aop-inbox/core`: command analyzer (tokenizer, default-deny), content-aware change risk (allowlists), realpath path zones, policy engine (risk floors, confidence thresholds, evidence requirement, suspicious escalation), state machine, failure codes, protocol, recipe catalog.
+- Server: devices + one-time pairing (12-char codes, per-code attempt limits), execution jobs with optimistic-concurrency transitions and append-only `job_events`, SSE gateway with per-tick device re-reads, approvals (once), continue, undo, kill switch, 7-day expiry, conflicts, in-app notifications (quiet hours, `Notifier` interface), D+3/D+7 follow-ups, daily resurfacing, maintenance/retention, usage feedback, product events, AI cost/prompt-version logging.
+- `@aop-inbox/agent`: zero-dependency CLI (init/start/status/doctor/logs/undo/pause/resume/service/uninstall), Keychain token, SQLite ledger + outbox, outbound SSE client, runner (local re-validation, real-FS policy, local approval enforcement, verify-first idempotency, snapshot → run → verify, automatic rollback, needs-user pauses, one job at a time), executors (Claude Code MCP via CLI, argv shell with runtime path/package-config guards, structured files, manual), 8 read-only recipes, user LaunchAgent.
+- UI: action block in item detail, Setup Review, execution progress + timeline, approval dialog, results/failure/undo, Activity, notification bell with follow-up answers, Home waiting/ready/applied, card hints, smart views, Settings → Local Agent + notifications, Ask Inbox execution citations `[En]` + setup suggestions, search “Setup history”.
+
+**Verified**
+- Unit/integration (Vitest): 295+ incl. 140+ policy/analyzer/red-team cases, safe temp-workspace execution fixture, rollback, idempotency, device-side enforcement, cross-user isolation, and a full server+agent end-to-end path. `pnpm eval`: 20/20 golden fixtures.
+- Browser QA over the **real HTTP/SSE transport** with a sandboxed agent (temp HOME, in-memory token, fake `claude`): dry run → approval → needs-you → applied → undo, and failure → automatic rollback, at 390/768/1440.
+
+**Not done / limits**
+- Live LLM extraction/structuring not run against a real key (offline mock verified; prompts may need tuning).
+- No video transcripts/OCR (no media download, by policy) — Reels are only as actionable as their caption, your note, or an attached guide.
+- Web Push, Telegram, email notifiers not built (interface only). Notifications are in-app.
+- Agent is not published to npm; run from the repo (`pnpm --filter @aop-inbox/agent build`). macOS only.
+- Headless Claude Code executor is experimental and off by default.
+- Package installs are only partially reversible (reported honestly).
+- No edge rate limiting on the public pairing endpoint (configure at the platform).
+
 ## Next priorities
 
-1. Run with a real `AI_API_KEY`; tune `lib/ai/prompts/analyze-item.ts` on 20–30 real Reels/articles; check cost in `ai_usage`.
+1. Run with a real `AI_API_KEY`; tune `analyze-item`, `extract-facts` and `structure-setup` prompts against `pnpm eval` + 20–30 real Reels; check cost in `ai_usage`.
+1b. Publish the agent (signed, provenance) and add Web Push for approvals/follow-ups.
 2. Deploy (Vercel or a container + managed Postgres with pgvector), set `BETTER_AUTH_URL`, `CRON_SECRET` + a 1-minute cron on `/api/jobs/run`, add CSP.
 3. iOS capture: Expo/native share extension posting to `/api/capture` (add token auth for non-cookie clients).
 4. Collection management (rename/merge/delete; AI-suggested merges of near-duplicate subcategories).

@@ -1,10 +1,10 @@
 # AOP Inbox
 
-**Capture once. Understand automatically. Find anything later.**
+**Capture anything. Understand it. Use it.**
 
-AOP Inbox is an AI-native personal knowledge inbox. Save an Instagram Reel, a link, or a quick thought in a second; AOP Inbox summarizes it, explains why it matters, tags it, files it into collections and indexes it so you can find it weeks later by describing it — or ask questions answered only from what you saved.
+AOP Inbox is an AI-native personal **knowledge & action** inbox. Save an Instagram Reel, a link, or a quick thought in a second; AOP Inbox summarizes it, explains why it matters, tags it, files it into collections and indexes it so you can find it weeks later by describing it — or ask questions answered only from what you saved.
 
-It replaces the “share the Reel to myself in DMs and never see it again” habit.
+It replaces the “share the Reel to myself in DMs and never see it again” habit — and when a saved item shows something you can actually set up (an install, an MCP server, a config change), it turns it into a reviewed, verified, undoable setup on your Mac, then checks back a few days later whether you used it.
 
 ```
 Instagram → Share → AOP Inbox → Saved ✓
@@ -26,6 +26,9 @@ Instagram → Share → AOP Inbox → Saved ✓
 | **Ask Inbox** | RAG over your own items, streamed, with numbered citations linked to the source items. |
 | **Related items** | Embedding neighbours under every item. |
 | **Inbox workflow** | Unread / read / archived, favorites, actionable, notes, master–detail view, J/K keyboard navigation. |
+| **Action intelligence** | Every item gets an intent (knowledge · reference · actionable · executable · requires_user). Actionable content becomes a checklist; executable content becomes a validated `SetupSpec` with evidence, risk and per-step explanations. |
+| **Safe local execution** | Optional Mac agent: dry run → approve (medium risk always) → snapshot → run → verify → automatic rollback on failure → Undo. High-risk steps never run automatically. |
+| **Applied knowledge** | Activity history, “Applied” lifecycle, D+3 / D+7 follow-ups (did you use it?), quiet hours. Search and Ask Inbox know what you saved *and* what you set up. |
 | **Offline AI mode** | No API key? A deterministic local analyzer + hashed embeddings keep every feature working (lower quality). |
 
 ## Architecture
@@ -63,6 +66,28 @@ POST /api/capture ─▶ normalize + dedupe ─▶ INSERT item (status: pending)
 **Search** — `query → keyword candidates (tsvector + pg_trgm + tags) ∪ vector candidates (HNSW cosine) → score = 0.50·semantic + 0.35·keyword + 0.10·importance + 0.05·recency`.
 
 **Ask Inbox** — `question → hybrid retrieval (top 8) → numbered context (notes outrank AI summaries) → strong model → NDJSON stream {sources, delta…}`.
+
+## Action layer (Knowledge → Action)
+
+```
+Extract (untrusted content → facts) → Structure (facts → plan) → Validate (evidence gate + Zod)
+→ Policy (deterministic, server and device) → Dry run (on the Mac) → Approve → Snapshot → Execute (argv only)
+→ Verify → Record (append-only ledger) → Follow up (D+3 / D+7)
+```
+
+Docs: [architecture](docs/action-layer-architecture.md) · [SetupSpec](docs/setup-spec.md) · [execution security](docs/execution-security.md) · [local agent](docs/local-agent.md) · [verification recipes](docs/verification-recipes.md) · [threat model](docs/threat-model.md) · [Meta integration](docs/meta-integration.md) · [ADR 0002](docs/adr/0002-action-layer.md).
+
+Connect a Mac (optional — everything else works without it):
+
+```bash
+pnpm --filter @aop-inbox/agent build
+# Settings → Local Agent → Connect this Mac → copy the code
+node packages/agent/dist/cli.js init --server http://localhost:3000 --code ABCDEF-GHJKMN
+node packages/agent/dist/cli.js start          # or add --launchd to init to run at login
+node packages/agent/dist/cli.js doctor         # Node, Claude Code, Keychain, network, workspace
+```
+
+The agent only writes inside `~/aop-inbox-workspace` by default, plus `~/.claude` settings and shell profiles with your approval. It never touches SSH keys, keychains, browser profiles or cloud credentials, never runs sudo or downloaded scripts, and never auto-runs anything above low risk (and low only if you turn that on twice: on the Mac and in Settings).
 
 ## Stack
 
@@ -149,6 +174,7 @@ The archive is unpacked in the browser (`fflate`); text files are scanned recurs
 pnpm test         # Vitest: unit (normalization, SSRF guard, Meta export parsing, AI schemas, redirects)
                   #         integration against TEST_DATABASE_URL (capture, dedupe, pipeline, queue retries, search, import)
 pnpm test:e2e     # Playwright smoke on desktop + Pixel 7 (needs `pnpm bootstrap`; reuses a running dev server)
+pnpm eval         # action-layer golden set (20 fixtures: installs, MCP, secrets, injection, remote scripts, hooks…)
 ```
 
 ## Security & privacy
@@ -159,11 +185,14 @@ pnpm test:e2e     # Playwright smoke on desktop + Pixel 7 (needs `pnpm bootstrap
 - Auth: Better Auth email/password, httpOnly cookies, sign-up limited to `AUTH_ALLOWED_EMAILS`, rate-limited. Every API route re-validates the session; the proxy is only an optimistic redirect. Cross-site writes are rejected by an Origin check.
 - The share target only auto-saves on genuine OS share navigations (`Sec-Fetch-Site: none`); anything else asks first.
 - Secrets live in `.env.local` (git-ignored). `.env.example` contains no values.
+- Action layer: content is never an instruction; LLM output is never a shell command; every command must be quoted from the source; the device re-checks everything before running. See [execution security](docs/execution-security.md) and the [threat model](docs/threat-model.md).
 
 ## Roadmap
 
 - YouTube transcripts and TikTok/X adapters with richer enrichment
 - Browser extension and an Expo share-extension wrapper (iOS share sheet)
+- Web Push for approvals and follow-ups (in-app notifications ship today behind a `Notifier` interface)
+- More executors (Codex, Computer Use) and recipe contributions
 - AI-maintained collection hierarchy merging/renaming
 - Model routing per task, batch analysis for large imports
 - Weekly “resurface” digest of unread high-value items

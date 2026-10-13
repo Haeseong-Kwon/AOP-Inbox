@@ -29,3 +29,11 @@ depends = ["lint", "typecheck", "test"]
 [tasks.ci]
 depends = ["check"]
 run = "pnpm build"
+
+[tasks.eval]
+description = "Action-layer golden set"
+run = "pnpm eval"
+
+[tasks.agent]
+description = "Build the local agent bundle"
+run = "pnpm --filter @aop-inbox/agent build"
