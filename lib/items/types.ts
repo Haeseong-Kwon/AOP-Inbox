@@ -77,9 +77,37 @@ export const captureSchema = z.object({
 });
 export type CaptureRequest = z.infer<typeof captureSchema>;
 
+/**
+ * What share sheets and Shortcuts actually send: `input`, or `url`/`text`/`title`
+ * (Web Share Target style). Folded into one CaptureRequest.
+ */
+export const captureFieldsSchema = z
+  .object({
+    input: z.string().max(20_000).optional(),
+    url: z.string().max(4_000).optional(),
+    text: z.string().max(20_000).optional(),
+    title: z.string().max(300).optional(),
+    note: z.string().max(10_000).optional(),
+  })
+  .transform((f, ctx): CaptureRequest => {
+    const url = f.url?.trim();
+    const text = f.text?.trim();
+    const input = f.input?.trim() || url || text || "";
+    if (!input) {
+      ctx.addIssue({ code: "custom", message: "Nothing to save — share a link or some text." });
+      return z.NEVER;
+    }
+    // A share often carries the link in `url` and a caption in `text`; keep the caption as the note.
+    const caption = url && text && text !== url && !text.includes(url) ? text : undefined;
+    const note = [f.note?.trim(), caption].filter(Boolean).join("\n\n") || undefined;
+    return captureSchema.parse({ input, note, title: f.title?.trim() || undefined });
+  });
+
 export interface CaptureResponse {
   item: ItemSummary;
   duplicate: boolean;
+  /** One line for a Shortcut notification. */
+  message: string;
 }
 
 export const updateItemSchema = z

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import type { AIConfig } from "@/lib/ai/config";
 import { AgentSettings, NotificationSettings } from "./agent-settings";
 import { InstallButton, SignOutButton, ThemePicker } from "./settings-client";
+import { ShortcutSetup } from "./shortcut-setup";
 
 function Block({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -41,9 +42,17 @@ export function SettingsView({ email, ai }: SettingsViewProps) {
         <ul className="flex flex-col gap-2 text-[14.5px] leading-relaxed">
           <li>Press C anywhere, paste, and hit Enter.</li>
           <li>Install the app, then share a Reel straight to AOP Inbox from Instagram (Android and desktop Chrome).</li>
-          <li>On iPhone, copy the Reel link and open AOP Inbox — Capture has a Paste button.</li>
+          <li>
+            On iPhone, add the <a href="#iphone" className="text-signal hover:underline">Save to AOP Inbox Shortcut</a> to the share sheet (below).
+          </li>
         </ul>
         <InstallButton />
+      </Block>
+
+      <Block title="Save from iPhone" description="Instagram → Share → Save to AOP Inbox. No app switch, no exports.">
+        <div id="iphone" className="w-full">
+          <ShortcutSetup />
+        </div>
       </Block>
 
       <Block title="Local Agent" description="Runs approved setups on your Mac — dry run first, snapshots before changes, verified, undoable.">

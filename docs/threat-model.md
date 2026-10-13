@@ -13,6 +13,7 @@
 | **Supply chain (agent)** | Zero runtime deps, pinned lockfile, single bundle, no self-update, no runtime downloads | Build-time dependencies (esbuild, zod) |
 | **Device token theft** | 256-bit token, Keychain storage, SHA-256 on server, revoke in Settings, token only valid for `/api/agent/*` | Token visible in `security` argv briefly during `init` to the same user; a stolen token can only fetch that user's dispatched jobs/report events — it can't approve anything |
 | **Cross-user access / IDOR** | Every job/spec/device/notification query filters by owner; agent events require job.device = device and job.user = device.user | — |
+| **Capture token leak** (iOS Shortcut) | Capture-only scope (every other route ignores it), 256-bit random, SHA-256 at rest, shown once, revocable, last-used shown, atomic 300/hour limit, https guidance in the UI | A leaked token can add junk items until revoked |
 | **Pairing brute force** | 12-char codes (public lookup + secret), 5 wrong secrets burn that code, 10-min TTL | Flooding the pairing endpoint (add edge rate limiting in production) |
 | **Rollback failure** | Snapshots before changes, hash-checked restore, honest reversibility (packages = partial), `ROLLBACK_FAILED` surfaced | External side effects (accounts, remote state, uninstalls) can't be undone |
 | **Approval fatigue** | No “always allow”, medium never auto, auto-run for low is opt-in twice (device + dashboard) | Person approves without reading |

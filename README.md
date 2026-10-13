@@ -165,8 +165,8 @@ The archive is unpacked in the browser (`fflate`); text files are scanned recurs
 
 - Install from the browser (Settings → Capture shows how per platform).
 - **Android / desktop Chrome**: Instagram → Share → *AOP Inbox* → “Saved ✓” (Web Share Target, `GET /share`).
-- **iPhone**: iOS does not support Web Share Target for PWAs. Copy the Reel link, open AOP Inbox, tap **+** → **Paste**.
-- `POST /api/capture` is the stable capture API for a future native or Expo wrapper.
+- **iPhone / Mac**: Instagram → Share → **Save to AOP Inbox** via a Shortcut with a capture-only token — no app switch. Set it up in **Settings → Save from iPhone** (guide: [docs/ios-shortcut.md](docs/ios-shortcut.md)). Needs an address the phone can reach (deployed HTTPS URL or a tunnel). Fallback: copy the link, open AOP Inbox, **+** → **Paste**.
+- `POST /api/capture` is the stable capture API (session cookie or `Authorization: Bearer aopc_…` capture token; JSON, form or plain text) for Shortcuts, scripts and a future native wrapper.
 
 ## Testing
 

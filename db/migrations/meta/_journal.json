@@ -29,6 +29,13 @@
       "when": 1791795074665,
       "tag": "0003_pairing_lookup",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791855532449,
+      "tag": "0004_capture_tokens",
+      "breakpoints": true
     }
   ]
 }

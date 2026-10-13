@@ -91,6 +91,14 @@ Phase 0 audit: `docs/action-layer-audit.md`. Architecture: `docs/action-layer-ar
 - Package installs are only partially reversible (reported honestly).
 - No edge rate limiting on the public pairing endpoint (configure at the platform).
 
+## iPhone capture (2026-10-13)
+
+- Capture-only tokens (`capture_tokens`, hash-only, revocable, 300/hour atomic limit) accepted by `POST/GET /api/capture` as `Authorization: Bearer aopc_…`; no other route accepts them.
+- `/api/capture` also accepts share-sheet shapes (`url`/`text`/`title`), form posts and plain-text bodies, and returns a `message` for notifications.
+- Settings → **Save from iPhone**: guided Shortcut setup with pre-filled values, editable server address (warns about localhost/http), token test, token list with last use and revoke. Guide: `docs/ios-shortcut.md`.
+- Verified: integration tests (hashing, revoke, ownership, atomic limit, normalization) and Playwright from a cookie-less client (save, duplicate, form/text bodies, scope isolation, invalid/revoked tokens, settings flow).
+- Not verified on a physical iPhone in this session; a pre-signed `.shortcut` file isn’t shipped (it needs Apple signing and can’t be tested here), so the Shortcut is built once by hand from the guided values.
+
 ## Next priorities
 
 1. Run with a real `AI_API_KEY`; tune `analyze-item`, `extract-facts` and `structure-setup` prompts against `pnpm eval` + 20–30 real Reels; check cost in `ai_usage`.

@@ -575,6 +575,31 @@ export const productEvents = pgTable(
   (t) => [index("product_events_user_name_idx").on(t.userId, t.name, t.createdAt)],
 );
 
+/**
+ * Capture-only tokens (iOS/macOS Shortcuts, scripts). They can save items and
+ * nothing else. Only a SHA-256 is stored; the token is shown once.
+ */
+export const captureTokens = pgTable(
+  "capture_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    /** First characters, for recognising a token in the list. Not enough to use it. */
+    prefix: text("prefix").notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    useCount: integer("use_count").notNull().default(0),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull().defaultNow(),
+    windowCount: integer("window_count").notNull().default(0),
+    createdAt: createdAt(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("capture_tokens_hash_uq").on(t.tokenHash), index("capture_tokens_user_idx").on(t.userId)],
+);
+
 export type Item = typeof items.$inferSelect;
 export type ExecutionJob = typeof executionJobs.$inferSelect;
 export type Device = typeof devices.$inferSelect;
