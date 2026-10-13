@@ -131,7 +131,9 @@ export function checkPackageManagerConfig(argv: string[], cwd: string): { ok: tr
   if (!PACKAGE_MANAGERS.has(name)) return { ok: true };
   for (let dir = cwd; ; dir = path.dirname(dir)) {
     for (const file of PACKAGE_MANAGER_CONFIG_FILES) {
-      if (existsSync(path.join(dir, file))) return { ok: false, reason: `Refused: ${path.join(dir, file)} could change what ${name} installs or runs` };
+      // Device-side check on the user's filesystem; keep the server bundler from tracing it.
+      const config = path.join(/*turbopackIgnore: true*/ dir, file);
+      if (existsSync(config)) return { ok: false, reason: `Refused: ${config} could change what ${name} installs or runs` };
     }
     if (path.dirname(dir) === dir || existsSync(path.join(dir, ".aop-inbox-workspace"))) break;
   }
