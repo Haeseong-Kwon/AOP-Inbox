@@ -318,7 +318,7 @@ export function SetupReview({ itemId }: { itemId: string }) {
               </Button>
               <Button size="sm" disabled={!canRun || run.isPending} onClick={() => run.mutate()}>
                 {run.isPending && <Loader2 className="animate-spin" aria-hidden />}
-                Run with AOP Inbox
+                {job && ["done", "rolled_back", "failed"].includes(job.status) ? "Run again" : "Run with AOP Inbox"}
               </Button>
             </>
           )}

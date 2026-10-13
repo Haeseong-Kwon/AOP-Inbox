@@ -75,6 +75,17 @@ export class JobRunner {
     return evaluateSpec(spec, { autoRunLow: config.autoRunLow && this.serverAutoRunLow, paths: pathContext(this.deps.paths, config.extraWorkspaces) });
   }
 
+  /** Paths leave the Mac home-relative (~/…): readable, and no username sent to the server. */
+  private tilde = (p: string) => (p.startsWith(this.deps.paths.home + "/") ? `~${p.slice(this.deps.paths.home.length)}` : p);
+
+  private emit(event: AgentEvent): Promise<void> {
+    if (event.type === "job.step") {
+      return this.deps.emit({ ...event, result: { ...event.result, changedFiles: event.result.changedFiles.map((f) => ({ ...f, path: this.tilde(f.path) })) } });
+    }
+    if (event.type === "job.planned") return this.deps.emit({ ...event, plan: event.plan.map((a) => ({ ...a, path: a.path && this.tilde(a.path) })) });
+    return this.deps.emit(event);
+  }
+
   private log(jobId: string | null, level: "info" | "warn" | "error", message: string) {
     this.deps.ledger.log(jobId, level, redactSecrets(message));
   }
@@ -130,17 +141,17 @@ export class JobRunner {
 
   async dryRun(dispatch: Dispatch): Promise<PlannedAction[] | null> {
     const { jobId } = dispatch;
-    await this.deps.emit({ type: "job.ack", jobId, mode: "dry_run" });
+    await this.emit({ type: "job.ack", jobId, mode: "dry_run" });
     const spec = this.validate(dispatch);
     if (!spec) {
-      await this.deps.emit({ type: "job.failed", jobId, code: "SPEC_INVALID", detail: "The setup plan didn't pass validation on this Mac.", rolledBack: false });
+      await this.emit({ type: "job.failed", jobId, code: "SPEC_INVALID", detail: "The setup plan didn't pass validation on this Mac.", rolledBack: false });
       return null;
     }
     this.deps.ledger.upsertJob(jobId, "dry_run", "planning", dispatch.specRevision, JSON.stringify(spec));
     const policy = this.policyFor(spec);
     if (policy.decision === "blocked") {
       this.deps.ledger.setJobStatus(jobId, "failed");
-      await this.deps.emit({ type: "job.failed", jobId, code: "POLICY_DENIED", detail: policy.blockedReasons.slice(0, 5).join("\n"), rolledBack: false });
+      await this.emit({ type: "job.failed", jobId, code: "POLICY_DENIED", detail: policy.blockedReasons.slice(0, 5).join("\n"), rolledBack: false });
       return null;
     }
     const ctx = this.context(jobId);
@@ -166,12 +177,12 @@ export class JobRunner {
       } catch (error) {
         const code = error instanceof StepError ? error.code : "EXEC_COMMAND_FAILED";
         this.deps.ledger.setJobStatus(jobId, "failed");
-        await this.deps.emit({ type: "job.failed", jobId, code, detail: redactSecrets((error as Error).message), rolledBack: false });
+        await this.emit({ type: "job.failed", jobId, code, detail: redactSecrets((error as Error).message), rolledBack: false });
         return null;
       }
     }
     this.deps.ledger.setJobStatus(jobId, "planned");
-    await this.deps.emit({ type: "job.planned", jobId, plan });
+    await this.emit({ type: "job.planned", jobId, plan });
     return plan;
   }
 
@@ -185,17 +196,17 @@ export class JobRunner {
     const { jobId } = dispatch;
     this.activeJobId = jobId;
     try {
-      await this.deps.emit({ type: "job.ack", jobId, mode: "execute" });
+      await this.emit({ type: "job.ack", jobId, mode: "execute" });
       const spec = this.validate(dispatch);
       if (!spec) {
-        await this.deps.emit({ type: "job.failed", jobId, code: "SPEC_INVALID", detail: "The setup plan didn't pass validation on this Mac.", rolledBack: false });
+        await this.emit({ type: "job.failed", jobId, code: "SPEC_INVALID", detail: "The setup plan didn't pass validation on this Mac.", rolledBack: false });
         return;
       }
       this.deps.ledger.upsertJob(jobId, "execute", "executing", dispatch.specRevision, JSON.stringify(spec));
       const policy = this.policyFor(spec);
       if (policy.decision === "blocked") {
         this.deps.ledger.setJobStatus(jobId, "failed");
-        await this.deps.emit({ type: "job.failed", jobId, code: "POLICY_DENIED", detail: policy.blockedReasons.slice(0, 5).join("\n"), rolledBack: false });
+        await this.emit({ type: "job.failed", jobId, code: "POLICY_DENIED", detail: policy.blockedReasons.slice(0, 5).join("\n"), rolledBack: false });
         return;
       }
       // Every step that will run must be approved now, on this Mac's view of the policy.
@@ -204,12 +215,12 @@ export class JobRunner {
         const p = policy.steps.find((x) => x.stepId === step.id)!;
         if (p.decision !== "manual" && !this.approved(step, p, dispatch)) {
           this.deps.ledger.setJobStatus(jobId, "failed");
-          await this.deps.emit({ type: "job.failed", jobId, code: "POLICY_DENIED", detail: `“${step.title}” wasn't approved for this run.`, rolledBack: false });
+          await this.emit({ type: "job.failed", jobId, code: "POLICY_DENIED", detail: `“${step.title}” wasn't approved for this run.`, rolledBack: false });
           return;
         }
       }
 
-      await this.deps.emit({ type: "job.started", jobId });
+      await this.emit({ type: "job.started", jobId });
       const ctx = this.context(jobId);
       const executed: { step: SetupStep; executor: Executor }[] = [];
 
@@ -220,8 +231,8 @@ export class JobRunner {
           const result: StepResult = { stepId: step.id, outcome: "needs_user", summary: step.instruction, changedFiles: [], installed: [], snapshotIds: [], reversible: "no" };
           this.deps.ledger.recordStep(jobId, step.id, "needs_user", JSON.stringify(result));
           this.deps.ledger.setJobStatus(jobId, "needs_user");
-          await this.deps.emit({ type: "job.step", jobId, result });
-          await this.deps.emit({ type: "job.needs_user", jobId, stepId: step.id });
+          await this.emit({ type: "job.step", jobId, result });
+          await this.emit({ type: "job.needs_user", jobId, stepId: step.id });
           return;
         }
 
@@ -233,7 +244,7 @@ export class JobRunner {
             if (pre.ok) {
               result = { stepId: step.id, outcome: "skipped", summary: `Already configured — ${pre.detail}`, changedFiles: [], installed: [], snapshotIds: [], reversible: "yes", verify: pre };
               this.deps.ledger.recordStep(jobId, step.id, "skipped", JSON.stringify(result));
-              await this.deps.emit({ type: "job.step", jobId, result });
+              await this.emit({ type: "job.step", jobId, result });
               continue;
             }
           }
@@ -244,8 +255,8 @@ export class JobRunner {
           if (result.outcome === "needs_user") {
             this.deps.ledger.recordStep(jobId, step.id, "needs_user", JSON.stringify(result));
             this.deps.ledger.setJobStatus(jobId, "needs_user");
-            await this.deps.emit({ type: "job.step", jobId, result });
-            await this.deps.emit({ type: "job.needs_user", jobId, stepId: step.id });
+            await this.emit({ type: "job.step", jobId, result });
+            await this.emit({ type: "job.needs_user", jobId, stepId: step.id });
             return;
           }
           // Exit code 0 isn't success: the result must be observable.
@@ -257,23 +268,23 @@ export class JobRunner {
           const detail = redactSecrets((error as Error).message);
           this.log(jobId, "error", `Step ${step.id} failed: ${detail}`);
           this.deps.ledger.recordStep(jobId, step.id, "failed", JSON.stringify({ stepId: step.id, detail }));
-          await this.deps.emit({
+          await this.emit({
             type: "job.step",
             jobId,
             result: { stepId: step.id, outcome: "failed", summary: detail.slice(0, 400), changedFiles: [], installed: [], snapshotIds: [], reversible: "no" },
           });
           const rolledBack = await this.rollbackExecuted(jobId, executed, ctx);
           this.deps.ledger.setJobStatus(jobId, "failed");
-          await this.deps.emit({ type: "job.failed", jobId, code, detail, rolledBack });
+          await this.emit({ type: "job.failed", jobId, code, detail, rolledBack });
           return;
         }
         this.deps.ledger.recordStep(jobId, step.id, result.outcome, JSON.stringify(result));
-        await this.deps.emit({ type: "job.step", jobId, result });
+        await this.emit({ type: "job.step", jobId, result });
       }
 
-      await this.deps.emit({ type: "job.verifying", jobId });
+      await this.emit({ type: "job.verifying", jobId });
       this.deps.ledger.setJobStatus(jobId, "done");
-      await this.deps.emit({ type: "job.completed", jobId });
+      await this.emit({ type: "job.completed", jobId });
     } finally {
       this.activeJobId = null;
     }
@@ -297,11 +308,11 @@ export class JobRunner {
 
   /** User-requested Undo of a finished job, from the local ledger (works offline too). */
   async undo(jobId: string): Promise<{ ok: boolean; detail: string }> {
-    await this.deps.emit({ type: "rollback.started", jobId });
+    await this.emit({ type: "rollback.started", jobId });
     const job = this.deps.ledger.job(jobId);
     if (!job) {
       const detail = "This Mac has no record of that setup, so nothing was changed.";
-      await this.deps.emit({ type: "rollback.completed", jobId, ok: false, detail });
+      await this.emit({ type: "rollback.completed", jobId, ok: false, detail });
       return { ok: false, detail };
     }
     const spec = SetupSpecSchema.parse(JSON.parse(job.specJson));
@@ -321,7 +332,7 @@ export class JobRunner {
     }
     this.deps.ledger.setJobStatus(jobId, ok ? "rolled_back" : "rollback_failed");
     const detail = redactSecrets(details.join(" ").slice(0, 1000) || "Nothing needed undoing.");
-    await this.deps.emit({ type: "rollback.completed", jobId, ok, detail });
+    await this.emit({ type: "rollback.completed", jobId, ok, detail });
     return { ok, detail };
   }
 }

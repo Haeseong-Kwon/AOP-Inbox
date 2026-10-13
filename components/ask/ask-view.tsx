@@ -139,7 +139,7 @@ export function AskView() {
 
             {ex.executions.length > 0 && (
               <div className="flex flex-col gap-2 border-t pt-4">
-                <h3 className="text-[13px] font-medium text-muted-foreground">Set up on your Mac · {ex.executions.length}</h3>
+                <h3 className="text-[13px] font-medium text-muted-foreground">Setup history · {ex.executions.length}</h3>
                 <ol className="-mx-2 flex flex-col">
                   {ex.executions.map((e) => (
                     <li key={e.jobId}>

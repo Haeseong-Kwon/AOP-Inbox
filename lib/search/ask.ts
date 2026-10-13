@@ -27,7 +27,7 @@ export interface AskExecutionSource {
 }
 
 const ACTION_LABELS: Record<string, string> = {
-  action_ready: "setup ready to apply (not applied yet)",
+  action_ready: "setup ready to apply, not applied yet",
   needs_approval: "setup waiting for approval",
   running: "setup running",
   waiting_user: "setup waiting for the owner",
@@ -63,7 +63,8 @@ export async function askInbox(
   const recent = EXECUTION_QUESTION.test(question)
     ? await db.select().from(executionJobs).where(eq(executionJobs.userId, userId)).orderBy(desc(executionJobs.createdAt)).limit(6)
     : [];
-  const jobs = [...new Map([...linked, ...recent].map((j) => [j.id, j])).values()].slice(0, 8);
+  // Only runs that actually touched the Mac are history; cancelled/expired jobs never ran.
+  const jobs = [...new Map([...linked, ...recent].map((j) => [j.id, j])).values()].filter((j) => j.status !== "cancelled" && j.status !== "expired").slice(0, 8);
   const executions: AskExecutionSource[] = jobs.map((j, i) => ({
     label: `E${i + 1}`,
     jobId: j.id,

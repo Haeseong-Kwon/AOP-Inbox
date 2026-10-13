@@ -26,7 +26,8 @@ function Timeline({ job }: { job: JobView }) {
   for (const e of job.events) for (const m of MILESTONES) if (m.events.includes(e.type) && !seen.has(m.key)) seen.set(m.key, e.at);
   const failed = job.events.find((e) => ["job_failed", "policy_denied", "rollback_failed"].includes(e.type));
   const rolled = job.events.find((e) => e.type === "rollback_completed");
-  const items = MILESTONES.filter((m) => seen.has(m.key) || !failed).map((m) => ({ label: m.label, at: seen.get(m.key) ?? null }));
+  // A failed job never reached "Verified/Completed" as a whole, even if an earlier step verified.
+  const items = MILESTONES.filter((m) => (failed ? seen.has(m.key) && m.key !== "verified" && m.key !== "completed" : true)).map((m) => ({ label: m.label, at: seen.get(m.key) ?? null }));
   if (failed) items.push({ label: job.errorMessage ?? "Failed", at: failed.at });
   if (rolled) items.push({ label: "Restored previous state", at: rolled.at });
   return (
@@ -103,7 +104,7 @@ function ApproveDialog({ job, open, onOpenChange, onApprove, pending }: { job: J
           <ul className="flex flex-col gap-2">
             {plan.filter((p) => p.type !== "skip").map((p, i) => (
               <li key={`${p.stepId}-${i}`} className="flex flex-col gap-1">
-                <span>{p.description}</span>
+                <span>{p.type === "user_action" ? `Your step: ${p.description}` : p.description}</span>
                 {p.command && <code className="rounded bg-surface px-2 py-1 font-mono text-[12px] break-all">{p.command}</code>}
                 {p.path && <span className="font-mono text-[12px] text-muted-foreground break-all">{p.path}</span>}
               </li>
@@ -133,7 +134,8 @@ export function JobProgress({ job, itemId, device }: { job: JobView; itemId: str
   const [details, setDetails] = useState(false);
   const act = (a: "approve" | "reject" | "undo" | "continue") => action.mutate({ jobId: job.id, action: a }, { onSuccess: () => setApproveOpen(false) });
   const waitingStep = job.steps.find((s) => s.status === "needs_user");
-  const reversible = job.steps.every((s) => !s.result || s.result.reversible === "yes");
+  // Only steps that actually changed something count; person-steps and skips don't.
+  const reversible = job.steps.filter((s) => s.status === "done" && s.result && s.result.outcome === "done").every((s) => s.result!.reversible === "yes");
 
   let headline: React.ReactNode;
   let body: React.ReactNode = null;

@@ -88,7 +88,7 @@ export function mockStructure(facts: ExtractedFacts, meta: { title?: string | nu
   for (const account of facts.accountRequirements) {
     steps.push({
       ...empty,
-      id: slug("you-" + account.split(/\s+/).slice(0, 3).join("-"), used),
+      id: slug("your-step", used),
       title: account.length > 60 ? `${account.slice(0, 57)}…` : account,
       type: "user_action",
       instruction: account,

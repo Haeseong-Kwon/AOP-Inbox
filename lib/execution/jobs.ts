@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import {
   ACTIVE_STATUSES,
   assertTransition,
+  TERMINAL_STATUSES,
   evaluateSpec,
   failureMessage,
   touchedTargets,
@@ -43,6 +44,11 @@ export async function transition(job: ExecutionJob, to: ExecutionStatus, event: 
     .returning();
   if (!updated) throw new HttpError(409, "This setup changed in the meantime. Refresh and try again.");
   await appendEvent(job.id, event, { from: job.status, to, ...payload });
+  if (TERMINAL_STATUSES.includes(to)) {
+    // Nothing is waiting on the person any more for this job.
+    await resolveNotifications(job.id, "approval_required");
+    await resolveNotifications(job.id, "user_action");
+  }
   if (job.itemId) await syncItemActionState(job.itemId);
   return updated;
 }
@@ -183,7 +189,8 @@ export async function recordStepResult(job: ExecutionJob, result: StepResult): P
     .set({ status, result })
     .where(and(eq(executionSteps.jobId, job.id), eq(executionSteps.stepId, result.stepId)));
   for (const id of result.snapshotIds) await appendEvent(job.id, "snapshot_created", { stepId: result.stepId, snapshotId: id });
-  await appendEvent(job.id, result.outcome === "skipped" ? "step_skipped" : result.outcome === "failed" ? "step_failed" : "step_completed", {
+  const eventType = { skipped: "step_skipped", failed: "step_failed", needs_user: "step_needs_user", rolled_back: "step_rolled_back", done: "step_completed" }[result.outcome];
+  await appendEvent(job.id, eventType, {
     stepId: result.stepId,
     summary: result.summary,
     changedFiles: result.changedFiles,

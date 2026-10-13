@@ -28,6 +28,7 @@ export const GET = withUser(async (_req, user) => {
     readyToApply: ready.items,
     waitingForYou: waiting.items,
     recentlyApplied: [...applied.items].sort((a, b) => (b.appliedAt ?? "").localeCompare(a.appliedAt ?? "")),
-    notifications: notifications.slice(0, 5),
+    // Home lists only what waits on the person; results live in the bell.
+    notifications: notifications.filter((n) => n.kind !== "execution_result").slice(0, 5),
   });
 });

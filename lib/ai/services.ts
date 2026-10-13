@@ -179,7 +179,7 @@ async function* mockAnswer(question: string, items: AskContextItem[], executions
     yield `- **${it.title}** — ${it.userNote || it.summary || "No summary yet."}${it.action ? ` _(${it.action})_` : ""} [${it.index}]\n`;
   }
   if (executions.length) {
-    yield `\n**Set up on your Mac**\n`;
+    yield `\n**Setup history on your Mac**\n`;
     for (const e of executions) yield `- ${e.itemTitle} — ${e.status} ${e.date} [${e.label}]\n`;
   }
 }
