@@ -3,7 +3,7 @@ import { and, asc, desc, eq, inArray, isNull, lte } from "drizzle-orm";
 import { evaluateSpec, explainStep, failureMessage, manualChecklist, staticPlan, STATUS_LABELS, touchedTargets, type ExecutionStatus } from "@aop-inbox/core";
 import { executionJobs, executionSteps, items, jobEvents, notifications, setupSpecs, usageFeedback, type Device, type ExecutionJob } from "@/db/schema";
 import { db } from "@/lib/db";
-import { HttpError } from "@/lib/http";
+import { HttpError } from "@/lib/errors";
 import { preferencesFor } from "@/lib/notify";
 import { isOnline, primaryDevice } from "./devices";
 import { LATEST_AGENT_VERSION } from "./gateway";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Download, FileText, Home, Inbox, Layers, Link2, MessageSquareText, Moon, Search, Settings } from "lucide-react";
+import { Activity, Download, FileText, Home, Inbox, Layers, Link2, MessageSquareText, Moon, Search, Settings, Zap } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -48,6 +48,8 @@ export function CommandPalette() {
     { label: "Open Home", icon: <Home />, action: () => go("/") },
     { label: "Open Inbox", icon: <Inbox />, action: () => go("/inbox") },
     { label: "Open Collections", icon: <Layers />, action: () => go("/collections") },
+    { label: "Open Activity", icon: <Activity />, action: () => go("/activity") },
+    { label: "Items ready to apply", icon: <Zap />, action: () => go("/inbox?state=ready") },
     { label: "Import Instagram history", icon: <Download />, action: () => go("/import") },
     { label: "Toggle theme", icon: <Moon />, action: () => run(() => setTheme(resolvedTheme === "dark" ? "light" : "dark")) },
     { label: "Settings", icon: <Settings />, action: () => go("/settings") },

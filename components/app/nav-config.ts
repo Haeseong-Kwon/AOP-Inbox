@@ -1,4 +1,4 @@
-import { Clock3, Compass, Home, Inbox, Layers, MessageSquareText, Search, Sparkles, Star, Zap } from "lucide-react";
+import { Activity, CircleCheck, Clock3, Compass, Home, Inbox, Layers, MessageSquareText, Play, Search, Sparkles, Star, Zap } from "lucide-react";
 import type { SourceType } from "@/db/schema";
 
 export const PRIMARY_NAV = [
@@ -7,6 +7,7 @@ export const PRIMARY_NAV = [
   { href: "/search", label: "Search", icon: Search, match: (p: string) => p.startsWith("/search") },
   { href: "/collections", label: "Collections", icon: Layers, match: (p: string) => p.startsWith("/collections") },
   { href: "/ask", label: "Ask Inbox", icon: MessageSquareText, match: (p: string) => p.startsWith("/ask") },
+  { href: "/activity", label: "Activity", icon: Activity, match: (p: string) => p.startsWith("/activity") || p.endsWith("/setup") },
 ] as const;
 
 export const SOURCE_NAV: { source: SourceType; label: string }[] = [
@@ -20,6 +21,8 @@ export const SMART_VIEWS = [
   { state: "favorite", label: "Favorites", icon: Star },
   { state: "high-value", label: "High value", icon: Sparkles },
   { state: "actionable", label: "Actionable", icon: Zap },
+  { state: "ready", label: "Ready to apply", icon: Play },
+  { state: "applied", label: "Applied", icon: CircleCheck },
 ] as const;
 
 export const BrowseIcon = Compass;

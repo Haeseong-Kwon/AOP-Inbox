@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Archive, ArrowUpRight, Check, Copy, Inbox, MoreHorizontal, RotateCw, Star, Trash2, X } from "lucide-react";
+import { Archive, ArrowUpRight, Check, Copy, Inbox, MoreHorizontal, RotateCw, Star, Trash2, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -11,9 +11,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ProcessingLine, SourceTile } from "@/components/inbox/item-views";
 import { SourceIcon } from "@/components/inbox/source-icon";
 import { fullDate, kindLabel, relativeTime } from "@/lib/client/format";
-import { keys, useDeleteItem, useItem, useRelated, useReprocess, useUpdateItem } from "@/lib/client/queries";
+import { keys, useCheckActions, useDeleteItem, useItem, useRelated, useReprocess, useUpdateItem } from "@/lib/client/queries";
 import { slugify } from "@/lib/ai/schemas";
 import { cn } from "@/lib/utils";
+import { ActionPanel } from "@/components/actions/action-panel";
 import { AddToCollection } from "./add-to-collection";
 import { NoteEditor } from "./note-editor";
 
@@ -55,6 +56,7 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
   const update = useUpdateItem();
   const remove = useDeleteItem();
   const reprocess = useReprocess();
+  const checkActions = useCheckActions(id);
   const qc = useQueryClient();
   const viewedRef = useRef<string | null>(null);
 
@@ -127,6 +129,9 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
             )}
             <DropdownMenuItem onSelect={() => reprocess.mutate(id)}>
               <RotateCw /> Re-analyze
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => checkActions.mutate()}>
+              <Zap /> Check for actions
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -217,7 +222,9 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
             </Section>
           )}
 
-          {item.actionItems.length > 0 && (
+          <ActionPanel item={item} />
+
+          {item.actionItems.length > 0 && !item.actionState?.match(/action_ready|applied|needs_approval|running|waiting_user|blocked/) && (
             <Section title="Action items">
               <ul className="flex flex-col gap-2">
                 {item.actionItems.map((action) => (

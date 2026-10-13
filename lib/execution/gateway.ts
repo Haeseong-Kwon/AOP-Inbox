@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { DEVICE_BUSY_STATUSES, DispatchSchema, failureMessage, redactSecrets, type AgentEvent, type ServerMessage } from "@aop-inbox/core";
 import { executionJobs, executionSteps, type Device, type ExecutionJob } from "@/db/schema";
 import { db } from "@/lib/db";
-import { HttpError } from "@/lib/http";
+import { HttpError } from "@/lib/errors";
 import { log } from "@/lib/log";
 import { notify, preferencesFor } from "@/lib/notify";
 import { touchDevice } from "./devices";

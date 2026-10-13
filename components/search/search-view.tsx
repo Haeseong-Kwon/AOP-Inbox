@@ -18,6 +18,7 @@ const REASON_LABELS: Record<MatchReason, string> = {
   tag: "Tag",
   content: "Keyword",
   meaning: "Similar meaning",
+  setup: "Setup history",
 };
 
 const EXAMPLES = ["AI agents running in parallel", "마케팅 자동화 아이디어", "onboarding UX", "pricing"];

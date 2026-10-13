@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCw, Star } from "lucide-react";
+import { Check, RotateCw, Star, Zap } from "lucide-react";
 import { useState } from "react";
 import type { ItemSummary } from "@/lib/items/types";
 import { kindLabel, relativeTime } from "@/lib/client/format";
@@ -86,11 +86,41 @@ function Meta({ item }: { item: ItemSummary }) {
         <SourceIcon type={item.sourceType} />
         <span className="truncate">{item.creatorName ?? item.domain ?? kindLabel(item.sourceType, item.contentKind)}</span>
       </span>
+      <ActionHint item={item} />
       {item.collection && <span className="hidden truncate sm:inline">{item.collection}</span>}
       <time dateTime={item.savedAt} className="shrink-0 tabular-nums">
         {relativeTime(item.savedAt)}
       </time>
     </div>
+  );
+}
+
+/** One quiet line about what you can do with this — only when there is something. */
+export function ActionHint({ item }: { item: ItemSummary }) {
+  const s = item.actionState;
+  if (!s || s === "knowledge" || s === "analyzing") return null;
+  const label =
+    s === "applied"
+      ? "Applied"
+      : s === "needs_approval"
+        ? "Review required"
+        : s === "waiting_user"
+          ? item.actionCount
+            ? "Waiting for you"
+            : "Guide needed"
+          : s === "running"
+            ? "Running on your Mac"
+            : s === "blocked"
+              ? "Manual steps only"
+              : item.actionCount
+                ? `${item.actionCount} ${item.actionCount === 1 ? "action" : "actions"}`
+                : "Things to try";
+  const emphasised = s === "needs_approval" || s === "waiting_user";
+  return (
+    <span className={cn("inline-flex shrink-0 items-center gap-1", emphasised ? "text-signal" : "text-muted-foreground")}>
+      {s === "applied" ? <Check className="size-3" aria-hidden /> : <Zap className="size-3" aria-hidden />}
+      {label}
+    </span>
   );
 }
 

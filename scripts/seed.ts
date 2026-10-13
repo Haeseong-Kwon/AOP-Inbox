@@ -27,14 +27,15 @@ if (!owner) throw new Error("Could not create dev user (is it in AUTH_ALLOWED_EM
 await db.update(user).set({ onboardedAt: new Date() }).where(eq(user.id, owner.id));
 
 if (process.argv.includes("--reset")) await db.delete(items).where(eq(items.userId, owner.id));
-const existing = await db.$count(items, eq(items.userId, owner.id));
-if (existing > 0) {
-  process.stdout.write(`Dev user already has ${existing} items — skipping (use --reset to reseed).\n`);
-  process.exit(0);
-}
-
+// Additive: each demo item is inserted only if it isn't there yet, so re-running never touches your data.
+const existingKeys = new Set(
+  (await db.select({ url: items.canonicalUrl, note: items.userNote }).from(items).where(eq(items.userId, owner.id))).map((r) => r.url ?? `note:${r.note}`),
+);
+let added = 0;
 for (const seed of SEED_ITEMS) {
   const source = seed.url ? normalizeUrl(seed.url) : null;
+  if (existingKeys.has(source?.canonicalUrl ?? `note:${seed.note}`)) continue;
+  added++;
   const now = Date.now();
   const [row] = await db
     .insert(items)
@@ -63,5 +64,5 @@ for (const seed of SEED_ITEMS) {
 }
 
 const processed = await drainQueue(120_000);
-process.stdout.write(`Seeded ${SEED_ITEMS.length} items for ${email} (${processed} embedded).\n`);
+process.stdout.write(`Added ${added} demo items for ${email} (${processed} jobs processed).\n`);
 process.exit(0);

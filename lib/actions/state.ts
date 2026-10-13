@@ -27,6 +27,7 @@ export async function syncItemActionState(itemId: string): Promise<ItemActionSta
   else if (latest && RUNNING.has(latest.status)) state = "running";
   else if (latest && latest.status === "needs_user_action") state = "waiting_user";
   else if (item.appliedAt) state = "applied";
+  else if (spec?.spec.guideRequired && spec.spec.steps.length === 0) state = "waiting_user"; // needs the creator's guide
   else if (spec) {
     state = spec.policy.decision === "none" ? (item.contentIntent === "actionable" && item.actionItems.length ? "action_ready" : "knowledge") : spec.policy.decision === "blocked" ? "blocked" : "action_ready";
   } else if (!item.contentIntent || item.contentIntent === "knowledge" || item.contentIntent === "reference") {

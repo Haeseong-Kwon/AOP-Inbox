@@ -8,23 +8,28 @@ import { Fragment, type ReactNode } from "react";
  * nodes only — no HTML injection.
  */
 
-function inline(text: string, onCite: (n: number) => void, key: string): ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*|_[^_\s][^_]*_|`[^`]+`|\[\d{1,2}\])/g);
+function inline(text: string, onCite: (ref: string) => void, key: string): ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*|_[^_\s][^_]*_|`[^`]+`|\[E?\d{1,2}\])/g);
   return parts.map((part, i) => {
     const k = `${key}-${i}`;
     if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={k} className="font-semibold">{part.slice(2, -2)}</strong>;
     if (/^_[^_]+_$/.test(part)) return <em key={k} className="text-muted-foreground">{part.slice(1, -1)}</em>;
     if (/^`[^`]+`$/.test(part)) return <code key={k} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">{part.slice(1, -1)}</code>;
-    const cite = part.match(/^\[(\d{1,2})\]$/);
+    const cite = part.match(/^\[(E?\d{1,2})\]$/);
     if (cite) {
-      const n = Number(cite[1]);
+      const n = cite[1];
+      const execution = n.startsWith("E");
       return (
         <button
           key={k}
           type="button"
           onClick={() => onCite(n)}
-          aria-label={`Source ${n}`}
-          className="mx-0.5 inline-flex h-[18px] min-w-[18px] -translate-y-px items-center justify-center rounded bg-signal-soft px-1 align-middle font-sans text-[11px] font-medium text-signal tabular-nums hover:bg-signal hover:text-primary-foreground"
+          aria-label={execution ? `Setup record ${n}` : `Source ${n}`}
+          className={
+            execution
+              ? "mx-0.5 inline-flex h-[18px] min-w-[18px] -translate-y-px items-center justify-center rounded border border-signal/50 px-1 align-middle font-sans text-[11px] font-medium text-signal tabular-nums hover:bg-signal hover:text-primary-foreground"
+              : "mx-0.5 inline-flex h-[18px] min-w-[18px] -translate-y-px items-center justify-center rounded bg-signal-soft px-1 align-middle font-sans text-[11px] font-medium text-signal tabular-nums hover:bg-signal hover:text-primary-foreground"
+          }
         >
           {n}
         </button>
@@ -34,7 +39,7 @@ function inline(text: string, onCite: (n: number) => void, key: string): ReactNo
   });
 }
 
-export function AnswerText({ text, onCite }: { text: string; onCite: (n: number) => void }) {
+export function AnswerText({ text, onCite }: { text: string; onCite: (ref: string) => void }) {
   const blocks: ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   const flush = () => {

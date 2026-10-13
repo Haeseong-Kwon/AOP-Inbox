@@ -6,7 +6,8 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { SourceIcon } from "@/components/inbox/source-icon";
 import { Button } from "@/components/ui/button";
-import type { AskSource } from "@/lib/search/ask";
+import type { ItemSummary } from "@/lib/items/types";
+import type { AskExecutionSource, AskSource } from "@/lib/search/ask";
 import { cn } from "@/lib/utils";
 import { AnswerText } from "./answer-text";
 
@@ -15,6 +16,8 @@ interface Exchange {
   question: string;
   answer: string;
   sources: AskSource[];
+  executions: AskExecutionSource[];
+  setups: ItemSummary[];
   status: "streaming" | "done" | "error";
   error?: string;
 }
@@ -57,10 +60,17 @@ export function AskView() {
     if (q.length < 2 || busy) return;
     const id = Date.now();
     setInput("");
-    setExchanges((all) => [...all, { id, question: q, answer: "", sources: [], status: "streaming" }]);
+    setExchanges((all) => [...all, { id, question: q, answer: "", sources: [], executions: [], setups: [], status: "streaming" }]);
     try {
       await streamAsk(q, (event) => {
-        if (event.type === "sources") patch(id, (e) => ({ ...e, sources: event.sources as AskSource[] }));
+        if (event.type === "sources") {
+          patch(id, (e) => ({
+            ...e,
+            sources: event.sources as AskSource[],
+            executions: (event.executions as AskExecutionSource[]) ?? [],
+            setups: (event.setups as ItemSummary[]) ?? [],
+          }));
+        }
         else if (event.type === "delta") patch(id, (e) => ({ ...e, answer: e.answer + (event.text as string) }));
         else if (event.type === "error") patch(id, (e) => ({ ...e, status: "error", error: event.message as string }));
       });
@@ -74,7 +84,7 @@ export function AskView() {
     bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [exchanges.length]);
 
-  const jumpToSource = (exchangeId: number, n: number) => {
+  const jumpToSource = (exchangeId: number, n: string) => {
     document.getElementById(`src-${exchangeId}-${n}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
     document.getElementById(`src-${exchangeId}-${n}`)?.focus({ preventScroll: true });
   };
@@ -113,6 +123,42 @@ export function AskView() {
               </p>
             ) : null}
             {ex.status === "error" && <p className="text-sm text-destructive">{ex.error}</p>}
+
+            {ex.status === "done" && ex.setups.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-[14px]">
+                <span>
+                  {ex.setups.length} related {ex.setups.length === 1 ? "setup" : "setups"} found
+                </span>
+                {ex.setups.slice(0, 3).map((s) => (
+                  <Link key={s.id} href={`/items/${s.id}/setup`} className="text-[13px] text-signal hover:underline">
+                    Review “{s.title.length > 32 ? `${s.title.slice(0, 30)}…` : s.title}”
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {ex.executions.length > 0 && (
+              <div className="flex flex-col gap-2 border-t pt-4">
+                <h3 className="text-[13px] font-medium text-muted-foreground">Set up on your Mac · {ex.executions.length}</h3>
+                <ol className="-mx-2 flex flex-col">
+                  {ex.executions.map((e) => (
+                    <li key={e.jobId}>
+                      <Link
+                        id={`src-${ex.id}-${e.label}`}
+                        href={e.itemId ? `/items/${e.itemId}/setup` : "/activity"}
+                        className="flex items-center gap-3 rounded-md px-2 py-2 transition-colors outline-none hover:bg-accent focus-visible:bg-accent"
+                      >
+                        <span className="w-6 shrink-0 text-center text-xs font-medium text-signal tabular-nums">{e.label}</span>
+                        <span className="min-w-0 flex-1 truncate text-[14px]">{e.itemTitle}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {e.status} {e.date}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
 
             {ex.sources.length > 0 && (
               <div className="flex flex-col gap-2 border-t pt-4">

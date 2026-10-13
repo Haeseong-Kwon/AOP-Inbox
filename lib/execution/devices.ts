@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { devicePairings, devices, type Device } from "@/db/schema";
 import { db } from "@/lib/db";
-import { HttpError } from "@/lib/http";
+import { HttpError } from "@/lib/errors";
 
 /**
  * Device pairing + device-token auth. Device tokens only reach /api/agent/*;

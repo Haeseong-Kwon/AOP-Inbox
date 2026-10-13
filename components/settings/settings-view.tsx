@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { SHORTCUTS } from "@/components/app/shortcut-list";
 import { Button } from "@/components/ui/button";
 import type { AIConfig } from "@/lib/ai/config";
+import { AgentSettings, NotificationSettings } from "./agent-settings";
 import { InstallButton, SignOutButton, ThemePicker } from "./settings-client";
 
 function Block({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
@@ -43,6 +44,16 @@ export function SettingsView({ email, ai }: SettingsViewProps) {
           <li>On iPhone, copy the Reel link and open AOP Inbox — Capture has a Paste button.</li>
         </ul>
         <InstallButton />
+      </Block>
+
+      <Block title="Local Agent" description="Runs approved setups on your Mac — dry run first, snapshots before changes, verified, undoable.">
+        <div id="agent" className="w-full">
+          <AgentSettings />
+        </div>
+      </Block>
+
+      <Block title="Notifications" description="In-app, quietly.">
+        <NotificationSettings />
       </Block>
 
       <Block title="Import" description="Bring in links you’ve already sent yourself.">

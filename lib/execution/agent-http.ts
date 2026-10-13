@@ -2,7 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { Device } from "@/db/schema";
-import { HttpError } from "@/lib/http";
+import { HttpError } from "@/lib/errors";
 import { errorMessage, log } from "@/lib/log";
 import { authenticateDevice } from "./devices";
 

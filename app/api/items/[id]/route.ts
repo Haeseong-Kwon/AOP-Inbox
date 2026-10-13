@@ -11,6 +11,11 @@ const idOf = async (ctx: Ctx) => z.uuid().parse((await ctx.params).id);
 export const GET = withUser<Ctx>(async (_req, user, ctx) => {
   const item = await getItem(user.id, await idOf(ctx));
   if (!item) throw new HttpError(404, "This item doesn't exist anymore.");
+  // Items analyzed before the action layer existed get their intent lazily, once, when opened.
+  if (!item.contentIntent && item.processingStatus === "completed") {
+    await reprocessItem(item.id, "analyze");
+    after(() => drainQueue(25_000));
+  }
   return NextResponse.json(item);
 });
 

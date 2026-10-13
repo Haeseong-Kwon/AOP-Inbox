@@ -26,6 +26,10 @@ const STATE_LABELS: Record<(typeof ITEM_STATES)[number], string> = {
   actionable: "Actionable",
   archived: "Archived",
   "high-value": "High value",
+  ready: "Ready to apply",
+  "needs-approval": "Needs approval",
+  waiting: "Waiting for you",
+  applied: "Applied",
 };
 const SORT_LABELS: Record<(typeof ITEM_SORTS)[number], string> = {
   recent: "Recently saved",
@@ -47,6 +51,7 @@ function useFilters(): ListFilters & { item: string | null } {
     sort: pick(params.get("sort"), ITEM_SORTS) ?? "recent",
     collection: params.get("collection") ?? undefined,
     tag: params.get("tag") ?? undefined,
+    intent: pick(params.get("intent"), ["executable", "actionable", "knowledge", "reference", "requires_user"] as const),
     item: params.get("item"),
   };
 }
@@ -210,7 +215,7 @@ export function InboxView() {
             </FilterChip>
           ))}
           <span className="mx-2 h-4 w-px shrink-0 bg-border" aria-hidden />
-          {(["unread", "read", "favorite", "actionable", "archived"] as const).map((s) => (
+          {(["unread", "read", "favorite", "actionable", "ready", "waiting", "applied", "archived"] as const).map((s) => (
             <FilterChip key={s} active={filters.state === s} onClick={() => setParams({ state: filters.state === s ? null : s })}>
               {STATE_LABELS[s]}
             </FilterChip>

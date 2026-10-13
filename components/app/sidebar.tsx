@@ -7,6 +7,7 @@ import { Suspense, type ReactNode } from "react";
 import { SourceIcon } from "@/components/inbox/source-icon";
 import { cn } from "@/lib/utils";
 import { PRIMARY_NAV, SMART_VIEWS, SOURCE_NAV } from "./nav-config";
+import { NotificationBell } from "./notification-bell";
 import { useUI } from "./ui-store";
 
 function NavLink({ href, active, children }: { href: string; active: boolean; children: ReactNode }) {
@@ -87,6 +88,7 @@ export function Sidebar() {
           <Logo />
           AOP Inbox
         </Link>
+        <NotificationBell />
       </div>
       <button
         type="button"

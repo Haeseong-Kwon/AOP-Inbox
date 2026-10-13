@@ -2,13 +2,10 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireApiUser, unauthorized, UnauthorizedError, type SessionUser } from "@/lib/auth/session";
+import { HttpError } from "@/lib/errors";
 import { errorMessage, log } from "@/lib/log";
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
+export { HttpError } from "@/lib/errors";
 
 /**
  * Wraps an authenticated route handler: resolves the user, maps validation and

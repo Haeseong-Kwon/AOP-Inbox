@@ -1,12 +1,13 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Search, Zap } from "lucide-react";
+import { NotificationList } from "@/components/app/notification-bell";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { CaptureForm } from "@/components/capture/capture-dialog";
 import { InboxEmpty } from "@/components/inbox/empty-state";
-import { ItemCard, ItemListSkeleton, ProcessingLine } from "@/components/inbox/item-views";
+import { ActionHint, ItemCard, ItemListSkeleton, ProcessingLine } from "@/components/inbox/item-views";
 import { SourceIcon } from "@/components/inbox/source-icon";
 import { greeting, relativeTime } from "@/lib/client/format";
 import { useClientValue } from "@/lib/client/use-client-value";
@@ -48,6 +49,7 @@ function statusSentence(data: HomeData): string {
     savedToday > 0 ? `You saved ${savedToday} ${savedToday === 1 ? "thing" : "things"} today.` : `${total} items in your inbox.`,
     unread > 0 ? `${unread} still unread.` : "Everything's been read.",
   ];
+  if (data.stats.appliedThisWeek > 0) parts.push(`${data.stats.appliedThisWeek} applied this week.`);
   if (processing > 0) parts.push(`${processing} being understood right now.`);
   return parts.join(" ");
 }
@@ -88,6 +90,21 @@ export function HomeView() {
       ) : (
         <div className="grid gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="flex min-w-0 flex-col gap-10">
+            {(data!.notifications.length > 0 || data!.waitingForYou.length > 0) && (
+              <section aria-label="Waiting for you" className="rounded-xl border">
+                <h2 className="border-b px-4 py-2.5 text-[13.5px] font-medium">Waiting for you</h2>
+                {data!.notifications.length > 0 && <NotificationList notifications={data!.notifications} />}
+                {data!.waitingForYou
+                  .filter((i) => !data!.notifications.some((n) => n.itemId === i.id))
+                  .map((item) => (
+                    <Link key={item.id} href={`/items/${item.id}/setup`} className="flex items-center gap-3 border-t px-4 py-3 text-[14px] first:border-t-0 hover:bg-accent/60">
+                      <Zap className="size-3.5 shrink-0 text-signal" aria-hidden />
+                      <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{item.actionState === "needs_approval" ? "Review required" : "Your step"}</span>
+                    </Link>
+                  ))}
+              </section>
+            )}
             <section aria-label="Recently saved">
               <SectionHeader title="Recently saved" href="/inbox" />
               <div className="-mx-4 sm:-mx-5">
@@ -117,6 +134,28 @@ export function HomeView() {
               <span className="flex-1">Search by meaning…</span>
               <kbd className="font-mono text-[11px]">/</kbd>
             </Link>
+
+            {data!.readyToApply.length > 0 && (
+              <section aria-label="Ready to apply">
+                <SectionHeader title="Ready to apply" href="/inbox?state=ready" />
+                <div className="-mx-2 flex flex-col">
+                  {data!.readyToApply.map((item) => (
+                    <CompactLink key={item.id} item={item} meta={<ActionHint item={item} />} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {data!.recentlyApplied.length > 0 && (
+              <section aria-label="Recently applied">
+                <SectionHeader title="Recently applied" href="/activity" linkLabel="Activity" />
+                <div className="-mx-2 flex flex-col">
+                  {data!.recentlyApplied.map((item) => (
+                    <CompactLink key={item.id} item={item} meta={item.appliedAt ? `Applied ${relativeTime(item.appliedAt)}` : undefined} />
+                  ))}
+                </div>
+              </section>
+            )}
 
             {data!.highValue.length > 0 && (
               <section aria-label="Worth your time">

@@ -14,7 +14,7 @@ import { executionJobs, executionSteps, items, jobEvents, setupSpecs, usageFeedb
 import { syncItemActionState } from "@/lib/actions/state";
 import { track } from "@/lib/analytics";
 import { db } from "@/lib/db";
-import { HttpError } from "@/lib/http";
+import { HttpError } from "@/lib/errors";
 import { log } from "@/lib/log";
 import { notify } from "@/lib/notify";
 import { primaryDevice } from "./devices";

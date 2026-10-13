@@ -60,6 +60,10 @@ export interface HomeData {
   highValue: ItemSummary[];
   continueReading: ItemSummary[];
   collections: CollectionNode[];
+  readyToApply: ItemSummary[];
+  waitingForYou: ItemSummary[];
+  recentlyApplied: ItemSummary[];
+  notifications: NotificationView[];
 }
 
 export function useHome() {
