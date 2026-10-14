@@ -26,7 +26,7 @@ export function InstagramDmSetup() {
   const { data } = useQuery({
     queryKey: KEY,
     queryFn: () => apiGet<InstagramLinkView>("/api/instagram/link"),
-    refetchInterval: (q) => (code && !q.state.data?.linked ? 3000 : false),
+    refetchInterval: (q) => (code && !q.state.data?.linked && !q.state.data?.pending ? 3000 : false),
   });
 
   if (!data) return null;
@@ -53,13 +53,55 @@ export function InstagramDmSetup() {
     toast(t("Disconnected. Messages to {bot} are no longer saved.", { bot }));
   };
 
+  const decide = async (approve: boolean) => {
+    setBusy(true);
+    try {
+      await apiSend("/api/instagram/link/confirm", approve ? "POST" : "DELETE");
+      setCode(null);
+      await qc.invalidateQueries({ queryKey: KEY });
+      if (!approve) toast(t("Request declined. Nothing from that account will be saved."));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Someone DM'd this user's code: show who, and save nothing until they approve.
+  if (data.pending) {
+    const who = data.pending.username ? `@${data.pending.username}` : null;
+    return (
+      <div className="flex w-full flex-col gap-3 rounded-lg border border-signal/40 px-4 py-3.5">
+        <div className="flex items-center gap-3">
+          <Shulker mood="open" size={22} />
+          <p className="text-[14px]">
+            {who ? (
+              <Rich text="**{who}** sent your code. Is this your Instagram account?" vars={{ who }} />
+            ) : (
+              t("Your code just arrived from Instagram, but the account name couldn't be read. Approve only if you sent it yourself just now.")
+            )}
+          </p>
+        </div>
+        <p className="text-[13px] text-muted-foreground">{t("Only approve your own account — whatever it sends to the bot will be saved here.")}</p>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => decide(true)} disabled={busy}>
+            {busy && <Loader2 className="animate-spin" aria-hidden />} {t("Yes, link it")}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => decide(false)} disabled={busy}>
+            {t("Not me")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (data.linked) {
     return (
       <div className="flex w-full flex-col gap-3">
         <div className="flex items-center gap-3 rounded-lg border px-4 py-3">
           <Shulker mood="peek" size={22} />
           <div className="min-w-0 flex-1 text-[14px]">
-            <p className="font-medium">{t("Connected to {bot}", { bot })}</p>
+            <p className="font-medium">{data.username ? t("@{username} → {bot}", { username: data.username, bot }) : t("Connected to {bot}", { bot })}</p>
             <p className="text-[13px] text-muted-foreground">
               {data.lastMessageAt
                 ? t("{n} messages · last {time}", { n: data.messageCount, time: relativeTime(data.lastMessageAt, locale) })

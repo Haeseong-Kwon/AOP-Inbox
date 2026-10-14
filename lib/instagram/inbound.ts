@@ -3,7 +3,7 @@ import { z } from "zod";
 import { captureInstagramShare, captureItem, type CaptureResult } from "@/lib/items/capture";
 import { translate } from "@/lib/i18n";
 import { errorMessage, log } from "@/lib/log";
-import { firstDelivery, LINK_CODE_PATTERN, noteMessage, redeemLinkCode, reply, userForSender, type InstagramConfig } from "./index";
+import { firstDelivery, LINK_CODE_PATTERN, noteMessage, redeemLinkCode, reply, senderUsername, userForSender, type InstagramConfig } from "./index";
 
 /* Lenient schema: Meta adds fields over time; we only read what we need. */
 const attachmentSchema = z.object({
@@ -99,14 +99,17 @@ export async function handleMessage(config: InstagramConfig, m: InboundMessage):
 
   const userId = await userForSender(igsid);
   if (!userId) {
-    const linked = text ? await redeemLinkCode(igsid, text) : null;
-    log.info("instagram.unlinked_message", { linked: Boolean(linked) });
+    const isCode = LINK_CODE_PATTERN.test(text.toUpperCase());
+    const pendingFor = isCode ? await redeemLinkCode(igsid, text, await senderUsername(config, igsid)) : null;
+    log.info("instagram.unlinked_message", { code: isCode, pending: Boolean(pendingFor) });
     await reply(
       config,
       igsid,
-      linked
-        ? ko("Linked to AOP Inbox. Share any Reel to this chat and the shulker will keep it.")
-        : ko("To save here, get a link code in AOP Inbox → Settings → Instagram DM and send it in this chat."),
+      pendingFor
+        ? ko("Almost there — approve this Instagram account in AOP Inbox → Settings → Instagram DM.")
+        : isCode
+          ? ko("That code didn't work. It may have expired — get a new one in AOP Inbox → Settings → Instagram DM.")
+          : ko("To save here, get a link code in AOP Inbox → Settings → Instagram DM and send it in this chat."),
     );
     return;
   }

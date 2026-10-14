@@ -7,7 +7,7 @@ It uses Meta's official **Instagram API with Instagram Login** (messaging webhoo
 ## How it works
 
 1. In AOP Inbox → Settings → **Instagram DM**, a user taps **Connect Instagram** and gets a one-time code (`SHULKER-XXXXXXXX`, 15 minutes, stored as a hash).
-2. They DM the code to the bot. The webhook binds their Instagram-scoped ID (IGSID) to their AOP Inbox account.
+2. They DM the code to the bot. The webhook records that sender (Instagram-scoped ID + @username) as a **pending** request; Settings then shows "**@username** sent your code. Is this your Instagram account?" Only after **Yes, link it** is the sender bound to the account, and the bot confirms with the masked AOP Inbox email (`j***@gmail.com`). Someone who sees a code over your shoulder and DMs it first only produces a request you can decline; nothing from an unapproved sender is ever saved.
 3. From then on, anything they DM to the bot is captured for them:
    - shared **Reels / posts** (`ig_reel`, `reel`, `ig_post`, legacy `share`) → an Instagram item keyed by media ID, titled from the caption. Meta sends the caption and a signed CDN asset URL, *not* the `instagram.com/reel/…` permalink, so the item has no "open original" link; the media is never fetched.
    - text with a link → saved like a pasted link (a copied Reel link keeps its permalink).

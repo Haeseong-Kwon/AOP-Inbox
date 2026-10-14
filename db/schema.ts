@@ -602,7 +602,8 @@ export const captureTokens = pgTable(
 
 /**
  * Instagram DM capture: one row per user. A short-lived link code (hash only)
- * is DM'd to the bot account; the sender's Instagram-scoped ID is then bound
+ * is DM'd to the bot account, the user confirms the requesting Instagram
+ * username in the app, and only then is the sender's Instagram-scoped ID bound
  * to this user. Only messages sent to the bot are ever processed.
  */
 export const instagramLinks = pgTable(
@@ -612,6 +613,11 @@ export const instagramLinks = pgTable(
       .primaryKey()
       .references(() => user.id, { onDelete: "cascade" }),
     igsid: text("igsid"),
+    igUsername: text("ig_username"),
+    // A code was redeemed from this sender; the user confirms it in the app before anything is saved.
+    pendingIgsid: text("pending_igsid"),
+    pendingUsername: text("pending_username"),
+    pendingAt: timestamp("pending_at", { withTimezone: true }),
     codeHash: text("code_hash"),
     codeExpiresAt: timestamp("code_expires_at", { withTimezone: true }),
     linkedAt: timestamp("linked_at", { withTimezone: true }),

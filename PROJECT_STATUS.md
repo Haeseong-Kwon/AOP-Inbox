@@ -121,7 +121,7 @@ Phase 0 audit: `docs/action-layer-audit.md`. Architecture: `docs/action-layer-ar
 
 ## Instagram DM capture (2026-10-14)
 
-- DM a Reel to your own bot account → saved (Meta's official Instagram API with Instagram Login, messages webhook). Link with a one-time `SHULKER-XXXXXXXX` code from Settings → Instagram DM. Setup and operations: `docs/instagram-dm.md`.
+- DM a Reel to your own bot account → saved (Meta's official Instagram API with Instagram Login, messages webhook). Link with a one-time `SHULKER-XXXXXXXX` code from Settings → Instagram DM, then approve the requesting @username in the app (a leaked code can't silently attach someone else's account). Setup and operations: `docs/instagram-dm.md`.
 - Shares are keyed by media ID with the caption as content; Meta doesn't send the permalink, and media is never fetched. Text DMs save links/notes. Unlinked senders' messages are never stored.
 - Signature-verified, 256 KB cap, `after()` processing, redelivery guard (`instagram_inbound`). Tests: `tests/integration/instagram.test.ts`.
 - Not verified against a live Meta app in this session (no credentials). Off until the five `INSTAGRAM_*` env vars are set. Token needs a manual refresh every 60 days.

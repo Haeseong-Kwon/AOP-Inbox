@@ -1,9 +1,9 @@
 import { createHmac } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { instagramLinks, items } from "@/db/schema";
+import { instagramLinks, items, user } from "@/db/schema";
 import { db } from "@/lib/db";
-import { createLinkCode, linkStatus, unlink, validSignature, type InstagramConfig } from "@/lib/instagram";
+import { confirmLink, createLinkCode, linkStatus, rejectPendingLink, unlink, validSignature, type InstagramConfig } from "@/lib/instagram";
 import { handleMessage, messagesFor, sharedMedia, type InboundMessage } from "@/lib/instagram/inbound";
 import { resetDatabase } from "./helpers";
 
@@ -19,7 +19,9 @@ beforeEach(async () => {
   replies = [];
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (_url: string, init: RequestInit) => {
+    vi.fn(async (url: string, init?: RequestInit) => {
+      // GET /{igsid}?fields=username — the profile lookup when a code arrives
+      if (!init?.body) return Response.json({ username: url.includes("INTRUDER") ? "stranger.account" : "me_on_ig" });
       replies.push(JSON.parse(String(init.body)).message.text);
       return new Response("{}");
     }),
@@ -41,6 +43,7 @@ const userItems = () => db.select().from(items).where(eq(items.userId, userId));
 async function link() {
   const { code } = await createLinkCode(userId);
   await handleMessage(config, dm({ text: `연결 ${code.toLowerCase()}` }));
+  await confirmLink(userId);
 }
 
 describe("instagram webhook parsing", () => {
@@ -79,9 +82,46 @@ describe("instagram DM capture", () => {
     expect(replies[0]).toMatch(/연결 코드/);
   });
 
+  it("a DM'd code only creates a pending request until the user approves the account shown", async () => {
+    const { code } = await createLinkCode(userId);
+    await handleMessage(config, dm({ text: code }));
+    expect(replies.at(-1)).toMatch(/승인/);
+    expect(await linkStatus(userId)).toMatchObject({ linked: false, pending: { username: "me_on_ig" } });
+    await handleMessage(config, dm({ attachments: [reel("before-approval")] }));
+    expect(await userItems()).toHaveLength(0);
+
+    await confirmLink(userId);
+    expect(await linkStatus(userId)).toMatchObject({ linked: true, username: "me_on_ig", pending: null });
+  });
+
+  it("someone who grabs your code gets a visible request you can decline — nothing of theirs is saved", async () => {
+    const { code } = await createLinkCode(userId);
+    await handleMessage(config, dm({ text: code }, "INTRUDER"));
+    expect((await linkStatus(userId)).pending).toEqual({ username: "stranger.account" });
+    // The code was used up by the intruder; the owner's own attempt doesn't override silently.
+    await handleMessage(config, dm({ text: code }));
+    expect(replies.at(-1)).toMatch(/코드가 맞지 않아요/);
+    await rejectPendingLink(userId);
+    await handleMessage(config, dm({ attachments: [reel("spam")] }, "INTRUDER"));
+    expect(await userItems()).toHaveLength(0);
+    expect(await linkStatus(userId)).toMatchObject({ linked: false, pending: null });
+  });
+
+  it("an Instagram account can't be linked to two AOP Inbox users", async () => {
+    await link();
+    await db.insert(user).values({ id: "other", name: "Other", email: "other@aop.local" });
+    const { code } = await createLinkCode("other");
+    // SENDER is already linked to test-user, so the message is treated as theirs, not as a code.
+    await handleMessage(config, dm({ text: code }));
+    expect((await linkStatus("other")).pending).toBeNull();
+    await expect(confirmLink("other")).rejects.toThrow(/expired/);
+    // Even if a pending request for an already-linked account existed, approval refuses it.
+    await db.update(instagramLinks).set({ pendingIgsid: SENDER, pendingAt: new Date() }).where(eq(instagramLinks.userId, "other"));
+    await expect(confirmLink("other")).rejects.toThrow(/already linked/);
+  });
+
   it("links with a one-time code, then saves shared reels by caption without fetching media", async () => {
     await link();
-    expect(replies.at(-1)).toMatch(/연결됐어요/);
     expect(await linkStatus(userId)).toMatchObject({ linked: true, configured: false });
 
     await handleMessage(config, dm({ attachments: [reel("4242")] }));
@@ -89,7 +129,7 @@ describe("instagram DM capture", () => {
     expect(item).toMatchObject({ sourceType: "instagram", externalId: "4242", contentKind: "reel", originalTitle: "Claude Code MCP 5개 세팅법", sourceUrl: null });
     expect(item.contentText).toContain("가이드");
     expect(replies.at(-1)).toBe("셜커박스에 담았어요 ✓");
-    // Only the reply call — no request for the CDN asset.
+    // Only Graph API calls (replies, profile lookup) — never the CDN asset.
     expect(vi.mocked(fetch).mock.calls.every(([url]) => String(url).startsWith("https://graph.instagram.com/"))).toBe(true);
 
     await handleMessage(config, dm({ attachments: [reel("4242")] }));
@@ -107,18 +147,16 @@ describe("instagram DM capture", () => {
     expect(saved[0]).toMatchObject({ sourceType: "instagram", userNote: "온보딩에 써먹자" });
   });
 
-  it("codes work once, expire, and can't be reused by another sender", async () => {
+  it("codes work once and expire", async () => {
     const { code } = await createLinkCode(userId);
     await db.update(instagramLinks).set({ codeExpiresAt: new Date(Date.now() - 1000) }).where(eq(instagramLinks.userId, userId));
     await handleMessage(config, dm({ text: code }));
-    expect((await linkStatus(userId)).linked).toBe(false);
+    expect(await linkStatus(userId)).toMatchObject({ linked: false, pending: null });
 
     const fresh = await createLinkCode(userId);
     await handleMessage(config, dm({ text: fresh.code }));
     await handleMessage(config, dm({ text: fresh.code }, "INTRUDER"));
-    const row = await db.query.instagramLinks.findFirst({ where: eq(instagramLinks.userId, userId) });
-    expect(row?.igsid).toBe(SENDER);
-    expect(await db.query.instagramLinks.findFirst({ where: eq(instagramLinks.igsid, "INTRUDER") })).toBeUndefined();
+    expect((await linkStatus(userId)).pending).toEqual({ username: "me_on_ig" });
   });
 
   it("stops saving after disconnect", async () => {

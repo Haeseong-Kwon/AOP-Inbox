@@ -43,6 +43,13 @@
       "when": 1791949705840,
       "tag": "0005_instagram_dm",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791950239253,
+      "tag": "0006_instagram_link_confirm",
+      "breakpoints": true
     }
   ]
 }

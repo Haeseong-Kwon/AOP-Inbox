@@ -1,8 +1,9 @@
 import "server-only";
 import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto";
-import { and, eq, gt, isNotNull, lt, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, lt, ne, sql } from "drizzle-orm";
 import { instagramInbound, instagramLinks } from "@/db/schema";
 import { db } from "@/lib/db";
+import { HttpError } from "@/lib/errors";
 import { errorMessage, log } from "@/lib/log";
 
 /**
@@ -60,16 +61,39 @@ export async function createLinkCode(userId: string): Promise<{ code: string; ex
   return { code, expiresAt };
 }
 
-/** Binds the sender to whoever issued the code. One use; expired codes never match. */
-export async function redeemLinkCode(igsid: string, text: string): Promise<string | null> {
+/**
+ * A DM'd code makes the sender a *pending* link for whoever issued it. One use;
+ * expired codes never match. Nothing is saved until the user confirms in the app,
+ * so a code seen over someone's shoulder can't silently attach another account.
+ */
+export async function redeemLinkCode(igsid: string, text: string, username: string | null): Promise<string | null> {
   const match = text.toUpperCase().match(LINK_CODE_PATTERN);
   if (!match) return null;
   const [row] = await db
     .update(instagramLinks)
-    .set({ igsid, linkedAt: new Date(), codeHash: null, codeExpiresAt: null })
+    .set({ pendingIgsid: igsid, pendingUsername: username, pendingAt: new Date(), codeHash: null, codeExpiresAt: null })
     .where(and(eq(instagramLinks.codeHash, sha(`SHULKER-${match[1]}`)), gt(instagramLinks.codeExpiresAt, new Date())))
     .returning({ userId: instagramLinks.userId });
   return row?.userId ?? null;
+}
+
+/** The user approves the Instagram account shown in the app. Returns the bound IGSID. */
+export async function confirmLink(userId: string): Promise<string> {
+  const row = await db.query.instagramLinks.findFirst({
+    where: and(eq(instagramLinks.userId, userId), isNotNull(instagramLinks.pendingIgsid), gt(instagramLinks.pendingAt, sql`now() - interval '15 minutes'`)),
+  });
+  if (!row?.pendingIgsid) throw new HttpError(409, "That link request expired. Get a new code and send it again.");
+  const taken = await db.query.instagramLinks.findFirst({ where: and(eq(instagramLinks.igsid, row.pendingIgsid), ne(instagramLinks.userId, userId)) });
+  if (taken) throw new HttpError(409, "That Instagram account is already linked to another AOP Inbox account.");
+  await db
+    .update(instagramLinks)
+    .set({ igsid: row.pendingIgsid, igUsername: row.pendingUsername, linkedAt: new Date(), pendingIgsid: null, pendingUsername: null, pendingAt: null })
+    .where(eq(instagramLinks.userId, userId));
+  return row.pendingIgsid;
+}
+
+export async function rejectPendingLink(userId: string): Promise<void> {
+  await db.update(instagramLinks).set({ pendingIgsid: null, pendingUsername: null, pendingAt: null }).where(eq(instagramLinks.userId, userId));
 }
 
 export async function userForSender(igsid: string): Promise<string | null> {
@@ -87,7 +111,10 @@ export async function noteMessage(userId: string): Promise<void> {
 export interface InstagramLinkView {
   configured: boolean;
   botUsername: string | null;
+  /** A code was DM'd from this account and waits for the user's approval. */
+  pending: { username: string | null } | null;
   linked: boolean;
+  username: string | null;
   linkedAt: string | null;
   lastMessageAt: string | null;
   messageCount: number;
@@ -95,12 +122,15 @@ export interface InstagramLinkView {
 
 export async function linkStatus(userId: string): Promise<InstagramLinkView> {
   const config = instagramConfig();
-  const row = await db.query.instagramLinks.findFirst({ where: and(eq(instagramLinks.userId, userId), isNotNull(instagramLinks.igsid)) });
+  const row = await db.query.instagramLinks.findFirst({ where: eq(instagramLinks.userId, userId) });
+  const pendingFresh = row?.pendingIgsid && row.pendingAt && Date.now() - row.pendingAt.getTime() < 15 * 60_000;
   return {
     configured: Boolean(config),
     botUsername: config?.botUsername ?? null,
-    linked: Boolean(row),
-    linkedAt: row?.linkedAt?.toISOString() ?? null,
+    pending: pendingFresh ? { username: row.pendingUsername } : null,
+    linked: Boolean(row?.igsid),
+    username: row?.igUsername ?? null,
+    linkedAt: row?.igsid ? (row.linkedAt?.toISOString() ?? null) : null,
     lastMessageAt: row?.lastMessageAt?.toISOString() ?? null,
     messageCount: row?.messageCount ?? 0,
   };
@@ -129,6 +159,21 @@ export async function pruneInbound(): Promise<number> {
 /* ─── Replies ────────────────────────────────────────────────────────────── */
 
 const GRAPH = "https://graph.instagram.com/v25.0";
+
+/** The sender's @username (Meta allows this for people who have messaged the account). Best effort. */
+export async function senderUsername(config: InstagramConfig, igsid: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${GRAPH}/${encodeURIComponent(igsid)}?fields=username`, {
+      headers: { authorization: `Bearer ${config.accessToken}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { username?: unknown };
+    return typeof body.username === "string" && /^[\w.]{1,30}$/.test(body.username) ? body.username : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Best effort: a failed reply never loses the save. Message text is not logged. */
 export async function reply(config: InstagramConfig, igsid: string, text: string): Promise<void> {
