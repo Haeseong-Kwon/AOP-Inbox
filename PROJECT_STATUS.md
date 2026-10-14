@@ -99,6 +99,13 @@ Phase 0 audit: `docs/action-layer-audit.md`. Architecture: `docs/action-layer-ar
 - Verified: integration tests (hashing, revoke, ownership, atomic limit, normalization) and Playwright from a cookie-less client (save, duplicate, form/text bodies, scope isolation, invalid/revoked tokens, settings flow).
 - Not verified on a physical iPhone in this session; a pre-signed `.shortcut` file isn’t shipped (it needs Apple signing and can’t be tested here), so the Shortcut is built once by hand from the guided values.
 
+## Deployment (2026-10-14)
+
+- Production: https://aop-inbox.vercel.app (Vercel project `aop-inbox`, Hobby; Neon Postgres via the Marketplace, migrations 0000–0004 applied).
+- `vercel.json` pins the Next.js preset and a daily cron on `/api/jobs/run` (Hobby allows daily only; `after()` and the client nudge drain the queue in between).
+- Env (production): `BETTER_AUTH_SECRET`, `CRON_SECRET` (generated, sensitive), `BETTER_AUTH_URL`, `AUTH_ALLOWED_EMAILS`, `AI_PROVIDER=mock`, plus Neon's `DATABASE_URL`/`DATABASE_URL_UNPOOLED`.
+- Migrate: `vercel env run -e production -- sh -c 'DATABASE_URL="$DATABASE_URL_UNPOOLED" pnpm db:migrate'`, then `vercel deploy --prod`.
+
 ## Next priorities
 
 1. Run with a real `AI_API_KEY`; tune `analyze-item`, `extract-facts` and `structure-setup` prompts against `pnpm eval` + 20–30 real Reels; check cost in `ai_usage`.
