@@ -119,6 +119,13 @@ Phase 0 audit: `docs/action-layer-audit.md`. Architecture: `docs/action-layer-ar
 - Where it shows: sidebar mark (lid pops on every save via `emitStored()`), Home mascot (peeks idly, opens while you type, swallows what you save), 9-slot hotbar with Minecraft tooltips and 1–9 keys, processing indicator, sleeping empty state, login (shuts its shell on the password field, damage flash on a wrong one), Activity XP bar, XP orbs when a setup finishes, 404/offline, app icons.
 - Reduced motion disables idle peeks and all sprite animations. Fan-made, not affiliated with Mojang/Microsoft.
 
+## Instagram DM capture (2026-10-14)
+
+- DM a Reel to your own bot account → saved (Meta's official Instagram API with Instagram Login, messages webhook). Link with a one-time `SHULKER-XXXXXXXX` code from Settings → Instagram DM. Setup and operations: `docs/instagram-dm.md`.
+- Shares are keyed by media ID with the caption as content; Meta doesn't send the permalink, and media is never fetched. Text DMs save links/notes. Unlinked senders' messages are never stored.
+- Signature-verified, 256 KB cap, `after()` processing, redelivery guard (`instagram_inbound`). Tests: `tests/integration/instagram.test.ts`.
+- Not verified against a live Meta app in this session (no credentials). Off until the five `INSTAGRAM_*` env vars are set. Token needs a manual refresh every 60 days.
+
 ## Next priorities
 
 1. Run with a real `AI_API_KEY`; tune `analyze-item`, `extract-facts` and `structure-setup` prompts against `pnpm eval` + 20–30 real Reels; check cost in `ai_usage`.

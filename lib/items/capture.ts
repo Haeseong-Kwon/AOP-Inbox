@@ -74,3 +74,46 @@ export async function captureItem(userId: string, req: CaptureRequest): Promise<
   log.info("capture.duplicate", { itemId: existing.id });
   return { itemId: existing.id, duplicate: true };
 }
+
+export interface InstagramShare {
+  /** Instagram media ID from the DM webhook. No permalink is provided, so this is the identity. */
+  mediaId: string;
+  kind: "reel" | "post";
+  /** The post's caption as Meta sends it in the share. */
+  caption: string | null;
+}
+
+const CAPTION_LIMIT = 4_000;
+
+/**
+ * A reel/post shared to the AOP Inbox bot by DM. Meta sends the caption and a
+ * signed CDN asset URL, not the instagram.com permalink; we keep the caption,
+ * never fetch or store the media.
+ */
+export async function captureInstagramShare(userId: string, share: InstagramShare): Promise<CaptureResult> {
+  const existing = await db.query.items.findFirst({
+    where: and(eq(items.userId, userId), eq(items.sourceType, "instagram"), eq(items.externalId, share.mediaId)),
+    columns: { id: true },
+  });
+  if (existing) {
+    log.info("capture.duplicate", { itemId: existing.id });
+    return { itemId: existing.id, duplicate: true };
+  }
+  const caption = share.caption?.trim().slice(0, CAPTION_LIMIT) || null;
+  const [created] = await db
+    .insert(items)
+    .values({
+      userId,
+      sourceType: "instagram",
+      externalId: share.mediaId,
+      contentKind: share.kind,
+      originalTitle: caption ? caption.split("\n")[0].slice(0, 140) : null,
+      contentText: caption,
+      // Nothing to enrich without a permalink; go straight to analysis.
+      processingStage: "analyze",
+    })
+    .returning({ id: items.id });
+  await enqueueProcessing(created.id);
+  log.info("capture.instagram_dm", { itemId: created.id, kind: share.kind });
+  return { itemId: created.id, duplicate: false };
+}

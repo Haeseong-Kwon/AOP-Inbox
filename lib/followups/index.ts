@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { actionAnalysisCache, executionJobs, items, notifications, usageFeedback, user, type ExecutionJob } from "@/db/schema";
 import { db } from "@/lib/db";
 import { expireStaleJobs } from "@/lib/execution/jobs";
+import { pruneInbound } from "@/lib/instagram";
 import { registerJobHandler } from "@/lib/ingestion/pipeline";
 import { enqueue, type Job } from "@/lib/jobs/queue";
 import { log } from "@/lib/log";
@@ -113,7 +114,8 @@ async function maintenance(): Promise<void> {
   await db
     .delete(notifications)
     .where(and(lt(notifications.createdAt, new Date(Date.now() - RETENTION.resolvedNotificationDays * DAY)), sql`(${notifications.resolvedAt} is not null or ${notifications.readAt} is not null)`));
-  log.info("maintenance.done", { expired, resurfaced });
+  const inboundPruned = await pruneInbound();
+  log.info("maintenance.done", { expired, resurfaced, inboundPruned });
 }
 
 /** One maintenance job per hour; cheap to call on every drain. */

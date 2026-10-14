@@ -600,6 +600,34 @@ export const captureTokens = pgTable(
   (t) => [uniqueIndex("capture_tokens_hash_uq").on(t.tokenHash), index("capture_tokens_user_idx").on(t.userId)],
 );
 
+/**
+ * Instagram DM capture: one row per user. A short-lived link code (hash only)
+ * is DM'd to the bot account; the sender's Instagram-scoped ID is then bound
+ * to this user. Only messages sent to the bot are ever processed.
+ */
+export const instagramLinks = pgTable(
+  "instagram_links",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    igsid: text("igsid"),
+    codeHash: text("code_hash"),
+    codeExpiresAt: timestamp("code_expires_at", { withTimezone: true }),
+    linkedAt: timestamp("linked_at", { withTimezone: true }),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    messageCount: integer("message_count").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("instagram_links_igsid_uq").on(t.igsid), uniqueIndex("instagram_links_code_uq").on(t.codeHash)],
+);
+
+/** Webhook message IDs already handled (Meta may redeliver). Pruned after a week; holds no content. */
+export const instagramInbound = pgTable("instagram_inbound", {
+  mid: text("mid").primaryKey(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type Item = typeof items.$inferSelect;
 export type ExecutionJob = typeof executionJobs.$inferSelect;
 export type Device = typeof devices.$inferSelect;

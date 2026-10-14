@@ -1,3 +1,4 @@
+import { InstagramDmSetup } from "./instagram-dm";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { SHORTCUTS } from "@/components/app/shortcut-list";
@@ -52,6 +53,12 @@ export function SettingsView({ email, ai }: SettingsViewProps) {
           </li>
         </ul>
         <InstallButton />
+      </Block>
+
+      <Block title="Instagram DM" description="Share a Reel to your shulker bot like you'd send it to a friend.">
+        <div id="instagram" className="w-full">
+          <InstagramDmSetup />
+        </div>
       </Block>
 
       <Block title="Save from iPhone" description="Instagram → Share → Save to AOP Inbox. No app switch, no exports.">
