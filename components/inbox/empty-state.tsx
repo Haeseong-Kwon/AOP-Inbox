@@ -3,6 +3,7 @@
 import { Download, Plus } from "lucide-react";
 import Link from "next/link";
 import { useUI } from "@/components/app/ui-store";
+import { Shulker } from "@/components/brand/shulker";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n/client";
 
@@ -22,9 +23,10 @@ export function InboxEmpty({ filtered }: { filtered: boolean }) {
   }
   return (
     <div className="flex flex-col items-start gap-4 px-5 py-16 sm:px-8 sm:py-24">
-      <h2 className="text-xl font-semibold tracking-[-0.01em]">{t("Your Inbox is clear.")}</h2>
+      <Shulker mood="sleep" size={52} title={t("Shulker")} />
+      <h2 className="text-xl font-semibold tracking-[-0.01em]">{t("Your shulker box is empty.")}</h2>
       <p className="max-w-sm text-[15px] leading-relaxed text-muted-foreground">
-        {t("Save a Reel, paste a link, or write something worth remembering.")}
+        {t("The shulker is napping. Feed it a Reel, a link, or something worth remembering.")}
       </p>
       <div className="flex flex-wrap gap-2 pt-1">
         <Button onClick={() => openCapture()}>

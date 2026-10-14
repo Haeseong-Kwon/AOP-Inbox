@@ -49,14 +49,14 @@
 }
 
 :root {
-  /* Light: paper, ink, one cold-blue accent */
+  /* Light: end-stone paper, ink, shulker purple */
   --background: oklch(0.985 0.002 250);
   --foreground: oklch(0.21 0.008 260);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.21 0.008 260);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.21 0.008 260);
-  --primary: oklch(0.52 0.15 245);
+  --primary: oklch(0.48 0.14 318);
   --primary-foreground: oklch(0.99 0 0);
   --secondary: oklch(0.955 0.004 250);
   --secondary-foreground: oklch(0.25 0.008 260);
@@ -67,31 +67,31 @@
   --destructive: oklch(0.56 0.2 25);
   --border: oklch(0.21 0.008 260 / 9%);
   --input: oklch(0.21 0.008 260 / 13%);
-  --ring: oklch(0.52 0.15 245 / 70%);
-  --signal: oklch(0.52 0.15 245);
-  --signal-soft: oklch(0.52 0.15 245 / 10%);
+  --ring: oklch(0.48 0.14 318 / 70%);
+  --signal: oklch(0.48 0.14 318);
+  --signal-soft: oklch(0.48 0.14 318 / 10%);
   --surface: oklch(0.97 0.003 250);
   --raised: oklch(1 0 0);
   --radius: 0.5rem;
   --sidebar: oklch(0.97 0.003 250);
   --sidebar-foreground: oklch(0.3 0.01 260);
-  --sidebar-primary: oklch(0.52 0.15 245);
+  --sidebar-primary: oklch(0.48 0.14 318);
   --sidebar-primary-foreground: oklch(0.99 0 0);
   --sidebar-accent: oklch(0.21 0.008 260 / 6%);
   --sidebar-accent-foreground: oklch(0.21 0.008 260);
   --sidebar-border: oklch(0.21 0.008 260 / 8%);
-  --sidebar-ring: oklch(0.52 0.15 245 / 70%);
+  --sidebar-ring: oklch(0.48 0.14 318 / 70%);
 }
 
 .dark {
-  /* Dark (default): cool graphite, soft off-white, glacial blue for state only */
-  --background: oklch(0.185 0.006 265);
+  /* Dark (default): End-dimension graphite, soft off-white, shulker purple for state */
+  --background: oklch(0.185 0.012 300);
   --foreground: oklch(0.925 0.006 85);
-  --card: oklch(0.215 0.007 265);
+  --card: oklch(0.215 0.012 300);
   --card-foreground: oklch(0.925 0.006 85);
   --popover: oklch(0.235 0.008 265);
   --popover-foreground: oklch(0.925 0.006 85);
-  --primary: oklch(0.78 0.11 238);
+  --primary: oklch(0.76 0.12 318);
   --primary-foreground: oklch(0.18 0.02 250);
   --secondary: oklch(0.255 0.008 265);
   --secondary-foreground: oklch(0.925 0.006 85);
@@ -102,19 +102,19 @@
   --destructive: oklch(0.7 0.17 25);
   --border: oklch(1 0 0 / 7.5%);
   --input: oklch(1 0 0 / 11%);
-  --ring: oklch(0.78 0.11 238 / 65%);
-  --signal: oklch(0.78 0.11 238);
-  --signal-soft: oklch(0.78 0.11 238 / 12%);
-  --surface: oklch(0.205 0.007 265);
+  --ring: oklch(0.76 0.12 318 / 65%);
+  --signal: oklch(0.76 0.12 318);
+  --signal-soft: oklch(0.76 0.12 318 / 13%);
+  --surface: oklch(0.205 0.012 300);
   --raised: oklch(0.235 0.008 265);
-  --sidebar: oklch(0.165 0.006 265);
+  --sidebar: oklch(0.165 0.012 300);
   --sidebar-foreground: oklch(0.8 0.008 260);
-  --sidebar-primary: oklch(0.78 0.11 238);
+  --sidebar-primary: oklch(0.76 0.12 318);
   --sidebar-primary-foreground: oklch(0.18 0.02 250);
   --sidebar-accent: oklch(1 0 0 / 5.5%);
   --sidebar-accent-foreground: oklch(0.95 0.005 85);
   --sidebar-border: oklch(1 0 0 / 6%);
-  --sidebar-ring: oklch(0.78 0.11 238 / 65%);
+  --sidebar-ring: oklch(0.76 0.12 318 / 65%);
 }
 
 @theme inline {
@@ -123,6 +123,103 @@
   --color-surface: var(--surface);
   --color-raised: var(--raised);
   --font-reading: var(--font-newsreader), ui-serif, Georgia, "Apple SD Gothic Neo", serif;
+  --font-pixel: var(--font-silkscreen), ui-monospace, monospace;
+}
+
+/* ─── Shulker sprites ───────────────────────────────────────────── */
+:root {
+  --px-deep: #3b2346;
+  --px-dark: #6d457d;
+  --px-shell: #9a68a9;
+  --px-light: #c49bd0;
+  --px-head: #e6e2a4;
+  --px-head-shade: #bdb879;
+  --px-eye: #24182c;
+  --px-glow: #f3efb6;
+  --mc-xp: #7ee32a;
+  --mc-tooltip-bg: #100010;
+  --mc-tooltip-edge: #2d0a63;
+}
+.shulker,
+.shulker-box {
+  image-rendering: pixelated;
+  overflow: visible;
+}
+/* Minecraft moves in ticks, not easing curves. */
+.shulker-lid,
+.shulker-head {
+  transition: transform 180ms steps(3, end);
+}
+.shulker-hurt {
+  animation: shulker-hurt 450ms steps(2, end);
+}
+@keyframes shulker-hurt {
+  0%, 60% { filter: sepia(1) saturate(6) hue-rotate(-50deg) brightness(0.9); transform: translateX(-1px); }
+  30% { transform: translateX(1px); }
+  100% { filter: none; transform: none; }
+}
+.shulker-zzz {
+  animation: shulker-zzz 2.4s steps(4, end) infinite;
+}
+@keyframes shulker-zzz {
+  0% { opacity: 0; transform: translateY(2px); }
+  40% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-2px); }
+}
+.shulker-box[data-open] .shulker-lid {
+  transition-duration: 120ms;
+}
+/* An item drops into the box. */
+.item-drop {
+  animation: item-drop 620ms steps(6, end) forwards;
+}
+@keyframes item-drop {
+  0% { opacity: 0; transform: translateY(-18px) scale(0.9); }
+  20% { opacity: 1; }
+  80% { opacity: 1; transform: translateY(2px) scale(0.7); }
+  100% { opacity: 0; transform: translateY(6px) scale(0.5); }
+}
+/* XP orbs float up when a setup is applied. */
+.xp-orb {
+  animation: xp-orb 1100ms steps(8, end) forwards;
+}
+@keyframes xp-orb {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), -34px) scale(1); }
+}
+/* Minecraft-style item tooltip */
+.mc-tooltip {
+  background: var(--mc-tooltip-bg);
+  border: 2px solid var(--mc-tooltip-edge);
+  box-shadow: 0 0 0 2px #100010;
+  border-radius: 0;
+  color: #fff;
+}
+.mc-slot {
+  background: #8b8b8b;
+  box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #fff;
+}
+.mc-slot-frame {
+  background: #c6c6c6;
+  box-shadow: 0 0 0 2px #555;
+}
+.dark .mc-slot-frame {
+  background: oklch(0.32 0.02 300);
+  box-shadow: 0 0 0 2px oklch(0.14 0.01 300);
+}
+.dark .mc-slot {
+  background: oklch(0.26 0.015 300);
+  box-shadow: inset 2px 2px 0 oklch(0.15 0.01 300), inset -2px -2px 0 oklch(0.36 0.02 300);
+}
+.mc-text-shadow {
+  text-shadow: 1px 1px 0 rgb(0 0 0 / 55%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .shulker-lid,
+  .shulker-head { transition: none; }
+  .shulker-hurt, .shulker-zzz, .item-drop, .xp-orb { animation: none; }
+  .item-drop, .xp-orb { opacity: 0; }
 }
 
 @layer base {

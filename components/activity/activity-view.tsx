@@ -1,5 +1,6 @@
 "use client";
 
+import { XpBar } from "@/components/brand/xp";
 import { Check, CircleDashed, RotateCcw, ShieldAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -46,10 +47,10 @@ export function ActivityView() {
       </header>
 
       {data && (
-        <p className="mb-8 text-[15px]">
-          <span className="text-[22px] font-semibold tabular-nums">{data.stats.appliedThisWeek}</span>
-          <span className="text-muted-foreground">{t(" applied this week · {n} in total", { n: data.stats.appliedTotal })}</span>
-        </p>
+        <div className="mb-8 flex flex-col items-center gap-2 rounded-xl border bg-surface px-4 py-5">
+          <XpBar level={data.stats.appliedTotal} week={data.stats.appliedThisWeek} />
+          <p className="text-[13px] text-muted-foreground">{t("{n} applied this week · each one you put to use is XP", { n: data.stats.appliedThisWeek })}</p>
+        </div>
       )}
 
       <div className="mb-4 flex gap-1" role="tablist" aria-label={t("Filter activity")}>

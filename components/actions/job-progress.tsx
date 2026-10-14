@@ -1,5 +1,6 @@
 "use client";
 
+import { XpBurst } from "@/components/brand/xp";
 import { Check, CircleDashed, Loader2, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -139,6 +140,13 @@ export function JobProgress({ job, itemId, device }: { job: JobView; itemId: str
   const feedback = useFeedback(itemId);
   const [approveOpen, setApproveOpen] = useState(false);
   const [details, setDetails] = useState(false);
+  // XP orbs only when a job finishes while you're watching, not on every revisit.
+  const [lastStatus, setLastStatus] = useState(job.status);
+  const [leveledUp, setLeveledUp] = useState(false);
+  if (job.status !== lastStatus) {
+    setLastStatus(job.status);
+    if (job.status === "done") setLeveledUp(true);
+  }
   const act = (a: "approve" | "reject" | "undo" | "continue") => action.mutate({ jobId: job.id, action: a }, { onSuccess: () => setApproveOpen(false) });
   const waitingStep = job.steps.find((s) => s.status === "needs_user");
   // Only steps that actually changed something count; person-steps and skips don't.
@@ -248,7 +256,8 @@ export function JobProgress({ job, itemId, device }: { job: JobView; itemId: str
     <section aria-label={t("Execution")} className="mb-8 rounded-xl border bg-card px-5 py-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:gap-8">
         <div className="flex flex-1 flex-col gap-3">
-          <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold" aria-live="polite">
+          <h2 className="relative inline-flex items-center gap-2 text-[15px] font-semibold" aria-live="polite">
+            {leveledUp && <XpBurst />}
             <Icon className={cn("size-4", busy && "animate-spin", job.status === "done" ? "text-signal" : job.status === "failed" ? "text-destructive" : "text-muted-foreground")} aria-hidden />
             {headline}
           </h2>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Shulker } from "@/components/brand/shulker";
 import { Check, RotateCw, Star, Zap } from "lucide-react";
 import { useState } from "react";
 import type { ItemSummary } from "@/lib/items/types";
@@ -64,11 +65,8 @@ export function ProcessingLine({ item }: { item: Pick<ItemSummary, "id" | "proce
   if (item.processingStatus === "pending" || item.processingStatus === "processing") {
     return (
       <span className="inline-flex items-center gap-2 text-[13px] text-muted-foreground" role="status">
-        <span className="relative flex size-1.5">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-signal opacity-60" />
-          <span className="relative inline-flex size-1.5 rounded-full bg-signal" />
-        </span>
-        {t("Understanding content…")}
+        <Shulker size={11} idle className="-mt-1" />
+        {t("The shulker is reading it…")}
       </span>
     );
   }

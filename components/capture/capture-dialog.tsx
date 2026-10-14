@@ -1,5 +1,6 @@
 "use client";
 
+import { emitStored } from "@/components/brand/events";
 import { ClipboardPaste, CornerDownLeft, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
@@ -51,7 +52,10 @@ export function CaptureForm({ mode, onDone, autoFocus = true, rows = 4 }: { mode
           onDone();
           const open = { label: t("Open"), onClick: () => router.push(`/inbox?item=${item.id}`) };
           if (duplicate) toast(t("Already in your Inbox"), { description: note.trim() ? t("Your note was added to it.") : item.title, action: open });
-          else toast.success(detected ? t("Saved") : t("Note saved"), { description: t("Understanding it in the background."), action: open });
+          else {
+            emitStored();
+            toast.success(t("Stored in your shulker box"), { description: t("The shulker is reading it in the background."), action: open });
+          }
         },
         onError: (error) => toast.error(error.message),
       },

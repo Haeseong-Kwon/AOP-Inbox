@@ -8,7 +8,7 @@ export const GET = withUser(async (_req, user) => {
   const base = { cursor: 0, sort: "recent" as const };
   const [stats, recent, unread, highValue, continueReading, collections, ready, waiting, applied, notifications] = await Promise.all([
     homeStats(user.id),
-    listItems(user.id, { ...base, limit: 6 }),
+    listItems(user.id, { ...base, limit: 9 }), // fills the 9-slot hotbar
     listItems(user.id, { ...base, state: "unread", limit: 5 }),
     listItems(user.id, { ...base, state: "high-value", sort: "importance", limit: 4 }),
     listItems(user.id, { ...base, state: "read", sort: "viewed", limit: 3 }),

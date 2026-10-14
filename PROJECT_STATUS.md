@@ -113,6 +113,12 @@ Phase 0 audit: `docs/action-layer-audit.md`. Architecture: `docs/action-layer-ar
 - The iPhone Shortcut (no cookie) gets Korean messages. Static page titles are Korean in both languages (metadata is static under Cache Components).
 - AI-written content (titles, summaries) follows the note/content language, not the UI language; the offline mock writes English.
 
+## Brand: 셜커 / Shulker box (2026-10-14)
+
+- Mascot 셜커 and the 셜커박스 container metaphor (the original working name). Original pixel art drawn from character maps in `components/brand/` (`Shulker` moods: closed/peek/open/sleep, `ShulkerBox`), shulker-purple palette, `steps()` motion, Silkscreen for pixel numerals.
+- Where it shows: sidebar mark (lid pops on every save via `emitStored()`), Home mascot (peeks idly, opens while you type, swallows what you save), 9-slot hotbar with Minecraft tooltips and 1–9 keys, processing indicator, sleeping empty state, login (shuts its shell on the password field, damage flash on a wrong one), Activity XP bar, XP orbs when a setup finishes, 404/offline, app icons.
+- Reduced motion disables idle peeks and all sprite animations. Fan-made, not affiliated with Mojang/Microsoft.
+
 ## Next priorities
 
 1. Run with a real `AI_API_KEY`; tune `analyze-item`, `extract-facts` and `structure-setup` prompts against `pnpm eval` + 20–30 real Reels; check cost in `ai_usage`.

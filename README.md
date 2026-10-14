@@ -197,3 +197,7 @@ pnpm eval         # action-layer golden set (20 fixtures: installs, MCP, secrets
 - Model routing per task, batch analysis for large imports
 - Weekly “resurface” digest of unread high-value items
 - Knowledge graph view of related items
+
+---
+
+The 셜커 (Shulker) mascot is original fan-made pixel art inspired by Minecraft. AOP Inbox is not affiliated with or endorsed by Mojang or Microsoft.

@@ -6,6 +6,8 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
 import { SourceIcon } from "@/components/inbox/source-icon";
 import { T, useT } from "@/lib/i18n/client";
+import { useStoredPulse } from "@/components/brand/events";
+import { ShulkerBox } from "@/components/brand/shulker-box";
 import { cn } from "@/lib/utils";
 import { PRIMARY_NAV, SMART_VIEWS, SOURCE_NAV } from "./nav-config";
 import { NotificationBell } from "./notification-bell";
@@ -116,17 +118,8 @@ export function Sidebar() {
   );
 }
 
-export function Logo({ className }: { className?: string }) {
-  // Tray with a single spark: things land here and get understood.
-  return (
-    <svg viewBox="0 0 20 20" className={cn("size-5", className)} aria-hidden>
-      <path
-        d="M2.5 11v3.5a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5V11h-4l-1.2 2h-4.6L6.5 11z"
-        className="fill-none stroke-foreground"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <circle cx="10" cy="5.5" r="2.2" className="fill-signal" />
-    </svg>
-  );
+/** The shulker box mark; its lid pops whenever something is saved anywhere in the app. */
+export function Logo({ className, size = 20 }: { className?: string; size?: number }) {
+  const stored = useStoredPulse();
+  return <ShulkerBox open={stored} size={size} className={className} />;
 }

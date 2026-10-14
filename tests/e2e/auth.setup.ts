@@ -10,6 +10,6 @@ setup("sign in", async ({ page, baseURL }) => {
   await page.getByLabel("Email").fill(process.env.DEV_USER_EMAIL ?? "dev@aop.local");
   await page.getByLabel("Password").fill(process.env.DEV_USER_PASSWORD ?? "aop-dev-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("heading", { name: /Your knowledge/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Toss it in the shulker box/ })).toBeVisible();
   await page.context().storageState({ path: STORAGE_STATE });
 });

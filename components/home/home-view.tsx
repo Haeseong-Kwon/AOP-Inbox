@@ -4,7 +4,10 @@ import { Search, Zap } from "lucide-react";
 import { NotificationList } from "@/components/app/notification-bell";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { useStoredPulse } from "@/components/brand/events";
+import { Hotbar } from "@/components/brand/hotbar";
+import { Shulker } from "@/components/brand/shulker";
 import { CaptureForm } from "@/components/capture/capture-dialog";
 import { InboxEmpty } from "@/components/inbox/empty-state";
 import { ActionHint, ItemCard, ItemListSkeleton, ProcessingLine } from "@/components/inbox/item-views";
@@ -56,29 +59,57 @@ function statusSentence(data: HomeData, t: ReturnType<typeof useT>): string {
   return parts.join(" ");
 }
 
+/** The mascot opens up while you're typing into it and gulps down whatever you save. */
+function HomeMascot({ listening }: { listening: boolean }) {
+  const t = useT();
+  const stored = useStoredPulse(1100);
+  return (
+    <div className="relative ml-auto w-[44px] shrink-0 sm:ml-0 sm:w-[76px]">
+      {stored && (
+        <span aria-hidden className="item-drop absolute -top-2 left-1/2 -ml-[7px] size-[14px] rounded-[2px] bg-[var(--px-glow)] shadow-[inset_-2px_-2px_0_var(--px-head-shade)]" />
+      )}
+      <Shulker mood={stored || listening ? "open" : "peek"} idle={!listening && !stored} size={76} className="h-auto w-full" title={t("Shulker")} />
+    </div>
+  );
+}
+
 export function HomeView() {
   const { data, isLoading, isError, error, refetch } = useHome();
   const router = useRouter();
   const hello = useClientValue(greeting, "Hello.");
   const t = useT();
   const locale = useLocale();
+  const [listening, setListening] = useState(false);
   useQueueNudge(Boolean(data?.stats.processing));
 
   return (
     <div className="mx-auto w-full max-w-[1120px] px-4 pt-8 pb-28 sm:px-8 md:pt-14 md:pb-16">
-      <header className="flex flex-col gap-2 pb-8">
-        <p className="text-[15px] text-muted-foreground">{t(hello)}</p>
-        <h1 className="text-[28px] leading-[1.15] font-semibold tracking-[-0.025em] text-balance sm:text-[34px]">
-          {t("Your knowledge, organized automatically.")}
-        </h1>
-        <p className="min-h-6 text-[15px] text-muted-foreground" aria-live="polite">
-          {data ? statusSentence(data, t) : " "}
-        </p>
+      <header className="flex flex-row-reverse items-start justify-end gap-5 pb-8 sm:flex-row sm:items-end sm:justify-start sm:gap-7">
+        <HomeMascot listening={listening} />
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-[15px] text-muted-foreground">{t(hello)}</p>
+          <h1 className="text-[26px] leading-[1.15] font-semibold tracking-[-0.025em] text-balance sm:text-[34px]">
+            {t("Toss it in the shulker box. It sorts itself.")}
+          </h1>
+          <p className="min-h-6 text-[15px] text-muted-foreground" aria-live="polite">
+            {data ? statusSentence(data, t) : " "}
+          </p>
+        </div>
       </header>
 
-      <div className="mb-10 overflow-hidden rounded-xl border bg-card shadow-xs focus-within:border-signal/40">
+      <div
+        className="mb-10 overflow-hidden rounded-xl border bg-card shadow-xs focus-within:border-signal/40"
+        onFocus={() => setListening(true)}
+        onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setListening(false)}
+      >
         <CaptureForm mode="link" autoFocus={false} rows={2} onDone={() => void refetch()} />
       </div>
+
+      {data && data.stats.total > 0 && (
+        <div className="mb-10">
+          <Hotbar items={data.recent} total={data.stats.total} />
+        </div>
+      )}
 
       {isLoading ? (
         <ItemListSkeleton rows={4} />
@@ -112,7 +143,7 @@ export function HomeView() {
             <section aria-label={t("Recently saved")}>
               <SectionHeader title="Recently saved" href="/inbox" />
               <div className="-mx-4 sm:-mx-5">
-                {data!.recent.map((item) => (
+                {data!.recent.slice(0, 6).map((item) => (
                   <ItemCard key={item.id} item={item} onOpen={(id) => router.push(`/inbox?item=${id}`)} />
                 ))}
               </div>

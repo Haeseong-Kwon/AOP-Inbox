@@ -3,7 +3,7 @@
 import { Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { Logo } from "@/components/app/sidebar";
+import { Shulker, type ShulkerMood } from "@/components/brand/shulker";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n/client";
 
@@ -32,6 +32,10 @@ export function LoginForm({ dev }: LoginFormProps) {
   const [password, setPassword] = useState(dev?.password ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // The shulker peeks at your email, shuts its shell while you type a password, and flinches on a wrong one.
+  const [focus, setFocus] = useState<"email" | "password" | null>(null);
+  const [hurt, setHurt] = useState(0);
+  const mood: ShulkerMood = pending ? "open" : focus === "password" ? "closed" : focus === "email" ? "peek" : "closed";
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +47,7 @@ export function LoginForm({ dev }: LoginFormProps) {
       const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as { message?: string } | null;
+        setHurt((n) => n + 1);
         setError(
           res.status === 401
             ? t("That email and password don't match.")
@@ -60,7 +65,7 @@ export function LoginForm({ dev }: LoginFormProps) {
 
   return (
     <div className="w-full max-w-[360px]">
-      <Logo className="mb-6 size-8" />
+      <Shulker key={hurt} mood={mood} idle={!focus && !pending} hurt={hurt > 0} size={44} className="mb-6" title={t("Shulker")} />
       <h1 className="text-[24px] font-semibold tracking-[-0.02em]">{mode === "signin" ? t("Sign in to AOP Inbox") : t("Create your account")}</h1>
       <p className="mt-1.5 mb-8 text-[15px] text-muted-foreground">{t("Capture once. Understand automatically. Find anything later.")}</p>
       <form onSubmit={submit} className="flex flex-col gap-3">
@@ -70,6 +75,8 @@ export function LoginForm({ dev }: LoginFormProps) {
             type="email"
             required
             autoComplete="email"
+            onFocus={() => setFocus("email")}
+            onBlur={() => setFocus(null)}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="h-10 rounded-lg border bg-surface px-3 text-[15px] font-normal outline-none focus:border-signal/60"
@@ -82,6 +89,8 @@ export function LoginForm({ dev }: LoginFormProps) {
             required
             minLength={10}
             autoComplete={mode === "signin" ? "current-password" : "new-password"}
+            onFocus={() => setFocus("password")}
+            onBlur={() => setFocus(null)}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="h-10 rounded-lg border bg-surface px-3 text-[15px] font-normal outline-none focus:border-signal/60"

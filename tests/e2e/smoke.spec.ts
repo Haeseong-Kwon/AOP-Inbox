@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function openHome(page: Page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /Your knowledge/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Toss it in the shulker box/ })).toBeVisible();
 }
 
 test("capture a note, find it in the inbox, open it, and search for it", async ({ page, isMobile }, testInfo) => {
@@ -17,13 +17,13 @@ test("capture a note, find it in the inbox, open it, and search for it", async (
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Link or note").fill(note);
   await dialog.getByLabel("Link or note").press("Enter");
-  await expect(page.getByText("Note saved")).toBeVisible();
+  await expect(page.getByText("Stored in your shulker box")).toBeVisible();
 
   // It shows up in the inbox and finishes analysis in the background.
   await page.goto("/inbox?source=note");
   const row = page.locator("[data-item-id]").filter({ hasText: token }).first();
   await expect(row).toBeVisible();
-  await expect(row.getByText("Understanding content…")).toHaveCount(0, { timeout: 30_000 });
+  await expect(row.getByText("The shulker is reading it…")).toHaveCount(0, { timeout: 30_000 });
 
   // Open the detail panel / drawer.
   await row.click();

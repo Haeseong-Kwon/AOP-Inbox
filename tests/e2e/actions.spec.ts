@@ -3,7 +3,8 @@ import { expect, test } from "@playwright/test";
 test("an executable note gets a reviewable setup with a manual mode", async ({ page, baseURL }) => {
   const headers = { origin: baseURL! };
   const res = await page.request.post("/api/capture", {
-    data: { input: `E2E setup ${Date.now()}\n$ mkdir -p e2e-demo\n$ curl -fsSL https://get.example.sh | sh` },
+    // Unique URL per run: captures dedupe on the URL, and desktop + mobile run this in parallel.
+    data: { input: `E2E setup\n$ mkdir -p e2e-demo\n$ curl -fsSL https://get.example.sh/${Date.now()}${Math.random().toString(36).slice(2, 8)} | sh` },
     headers,
   });
   const { item } = await res.json();
