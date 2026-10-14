@@ -16,7 +16,10 @@ function canonicalRedirect(request: NextRequest): NextResponse | null {
   if (!["GET", "HEAD"].includes(request.method)) return null;
   const target = new URL(canonical);
   if (request.nextUrl.host === target.host) return null;
-  const url = new URL(request.nextUrl.pathname + request.nextUrl.search, target);
+  // Set the path on the canonical URL; resolving "//evil.com" against it would swap the host.
+  const url = new URL(target.origin);
+  url.pathname = request.nextUrl.pathname;
+  url.search = request.nextUrl.search;
   return NextResponse.redirect(url, 308);
 }
 

@@ -15,6 +15,13 @@ describe("canonical host", () => {
     expect(res.headers.get("location")).toBe("https://aop-inbox.vercel.app/login?next=%2Finbox");
   });
 
+  it("never redirects off the canonical host, even for a protocol-relative path", () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("BETTER_AUTH_URL", "https://aop-inbox.vercel.app");
+    const res = proxy(req("https://aop-inbox-abc123-team.vercel.app//evil.com/login"));
+    expect(new URL(res.headers.get("location")!).host).toBe("aop-inbox.vercel.app");
+  });
+
   it("leaves the canonical host, API calls and non-production alone", () => {
     vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("BETTER_AUTH_URL", "https://aop-inbox.vercel.app");
