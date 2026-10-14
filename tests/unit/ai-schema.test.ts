@@ -67,3 +67,27 @@ describe("helpers", () => {
     expect(mockEmbed("parallel coding agents")).toEqual(v);
   });
 });
+
+describe("offline analyzer edge cases", () => {
+  it("titles a caption-less Reel by its author instead of the URL", () => {
+    const a = mockAnalyze({ sourceType: "instagram", url: "https://www.instagram.com/reel/X/", creator: "cook.kim" });
+    expect(a.title).toBe("@cook.kim");
+    expect(a.summary).toBe("");
+  });
+
+  it("never cuts an emoji in half (Postgres jsonb rejects a lone surrogate)", () => {
+    const content = `${"가".repeat(199)}😀 more text after the cut`; // 200-char cut lands mid-emoji
+    const a = mockAnalyze({ sourceType: "instagram", content });
+    const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    for (const s of [a.title, a.summary, ...a.keyPoints]) expect(lone.test(s)).toBe(false);
+  });
+});
+
+describe("offline analyzer summaries", () => {
+  it("does not repeat the caption's first line (the title) as the summary", () => {
+    const one = mockAnalyze({ sourceType: "instagram", title: "Free Adobe alternatives???", content: "Free Adobe alternatives???" });
+    expect(one.summary).toBe("");
+    const more = mockAnalyze({ sourceType: "instagram", title: "Free Adobe alternatives", content: "Free Adobe alternatives\nThree open-source tools that cover most of it." });
+    expect(more.summary).toBe("Three open-source tools that cover most of it.");
+  });
+});

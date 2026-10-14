@@ -90,6 +90,41 @@ describe("what a full export contributes", () => {
     expect(byUrl["https://www.instagram.com/reel/SAVED/"]).toMatchObject({ origin: "saved", author: "chef.kim", timestamp: 1_600_000_000_000 });
   });
 
+  it("reads the 2025+ Saved format, whose labels come in the account's language", async () => {
+    // Real shape (values invented): labels are translated, so parsing must not depend on them.
+    const saved = [
+      {
+        timestamp: 1_791_801_878,
+        media: [],
+        label_values: [
+          { label: "URL", value: "https://www.instagram.com/p/NEWFMT/", href: "https://www.instagram.com/p/NEWFMT/" },
+          { label: mangled("캡션"), value: mangled("주말 브런치 레시피 🍳 — 재료는 아래에") },
+          { label: mangled("제목"), value: "" },
+          { dict: [{ dict: [{ label: mangled("이름"), value: "brunch" }], title: "" }], title: mangled("해시태그") },
+          {
+            dict: [{ dict: [{ label: "URL", value: "https://cook.example" }, { label: mangled("이름"), value: "Cook Kim" }, { label: mangled("사용자 이름"), value: "cook.kim" }], title: "" }],
+            title: mangled("소유자"),
+          },
+        ],
+        fbid: "1",
+      },
+    ];
+    const zip = zipSync({ "your_instagram_activity/saved/saved_posts.json": json(saved) });
+    const [link] = await extractLinksFromFile(new File([zip], "export.zip"));
+    expect(link).toEqual({
+      url: "https://www.instagram.com/p/NEWFMT/",
+      origin: "saved",
+      timestamp: 1_791_801_878_000,
+      caption: "주말 브런치 레시피 🍳 — 재료는 아래에",
+      author: "cook.kim",
+    });
+  });
+
+  it("recovers a caption Meta cut mid-character", () => {
+    const cut = mangled("셜커박스").slice(0, -1); // last character's final byte missing
+    expect(fixMetaText(cut)).toBe("셜커박");
+  });
+
   it("a single history file outside Saved/DMs yields nothing", async () => {
     const viewed = new File([JSON.stringify({ impressions: [{ href: "https://www.instagram.com/p/VIEWED/" }] })], "posts_viewed.json");
     expect(await extractLinksFromFile(viewed)).toEqual([]);

@@ -1,4 +1,5 @@
 import { unzip, type UnzipFileInfo } from "fflate";
+import { truncate } from "@/lib/utils";
 
 /**
  * Meta "Download Your Information" parsing. Runs in the browser: the archive is
@@ -36,7 +37,7 @@ const TEXT_ENTRY_RE = /\.(json|html?)$/i;
 // message_requests (strangers) and everything else are skipped.
 const SAVED_PATH_RE = /(^|\/)saved\/[^/]+\.(json|html?)$/i;
 const DM_PATH_RE = /(^|\/)messages\/inbox\/[^/]+\/[^/]+\.(json|html?)$/i;
-const CAPTION_MAX = 280;
+const CAPTION_MAX = 1000;
 const AUTHOR_MAX = 100;
 const PRIORITY: Record<LinkOrigin, number> = { saved: 3, self: 2, dm: 1 };
 
@@ -83,14 +84,17 @@ export function extractLinksFromText(text: string, out: Map<string, ExtractedLin
 /** Meta writes UTF-8 bytes as \u00XX escapes ("ì\u0095\u0088" for "안"). Undo that. */
 export function fixMetaText(text: string): string {
   if (!/[\u0080-\u00ff]/.test(text) || /[^\u0000-\u00ff]/.test(text)) return text;
+  const bytes = Uint8Array.from(text, (c) => c.charCodeAt(0));
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(text, (c) => c.charCodeAt(0)));
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
-    return text;
+    // Meta sometimes cuts a caption mid-character. If it's clearly escaped UTF-8 (a lead byte
+    // followed by a continuation byte), decode anyway and drop the broken tail; else it's real Latin-1.
+    return /[\u00c2-\u00f4][\u0080-\u00bf]/.test(text) ? new TextDecoder().decode(bytes).replace(/\uFFFD/g, "") : text;
   }
 }
 
-const clip = (value: unknown, max: number) => (typeof value === "string" && value.trim() ? fixMetaText(value.trim()).slice(0, max) : undefined);
+const clip = (value: unknown, max: number) => (typeof value === "string" && value.trim() ? truncate(fixMetaText(value.trim()), max) : undefined);
 
 /** Saved beats your own chat beats someone else's; the earliest date wins. */
 function addLink(out: Map<string, ExtractedLink>, link: ExtractedLink) {
@@ -127,13 +131,71 @@ function extractThread(thread: Thread, out: Map<string, ExtractedLink>) {
   }
 }
 
-/** saved_posts.json / saved_collections.json: `{ saved_saved_media: [{ title: "<author>", string_map_data: {…href…} }] }` */
-function extractSaved(root: Record<string, unknown>, out: Map<string, ExtractedLink>) {
-  for (const list of Object.values(root)) {
-    for (const entry of Array.isArray(list) ? list : [list]) {
-      const author = clip((entry as { title?: unknown })?.title, AUTHOR_MAX);
-      addFrom(entry, out, "saved", () => (author ? { author } : {}));
+const PROFILE_URL_RE = /^https?:\/\/(?:www\.)?instagram\.com\/([A-Za-z0-9._]{1,30})\/?$/;
+
+type LabelValue = { label?: unknown; value?: unknown; href?: unknown; dict?: unknown };
+
+/** First Instagram profile URL anywhere inside `value` → its username. */
+function profileUsername(value: unknown): string | undefined {
+  const stack = [value];
+  while (stack.length) {
+    const v = stack.pop();
+    if (typeof v === "string") {
+      const m = v.match(PROFILE_URL_RE);
+      if (m) return m[1];
+    } else if (v && typeof v === "object") stack.push(...Object.values(v));
+  }
+  return undefined;
+}
+
+/**
+ * 2025+ format: `[{ timestamp, label_values: [{ label: "URL", href }, { label: "Caption", value }, { title: "Owner", dict: [...] }] }]`.
+ * Labels come translated into the account's language ("캡션", "소유자"), so we go by shape, not label:
+ * the entry's link is the top-level `href`, the caption the longest plain value, the author the owner's profile URL.
+ */
+function extractSavedEntry(entry: { timestamp?: unknown; label_values: LabelValue[] }, out: Map<string, ExtractedLink>) {
+  const top = entry.label_values;
+  const href = top.find((lv) => typeof lv.href === "string")?.href as string | undefined;
+  if (!href) return;
+  const texts = top.filter((lv) => !lv.href && typeof lv.value === "string").map((lv) => lv.value as string);
+  const caption = texts.sort((a, b) => b.length - a.length)[0];
+  const ts = typeof entry.timestamp === "number" ? (entry.timestamp < 1e12 ? entry.timestamp * 1000 : entry.timestamp) : undefined;
+  addLink(out, {
+    url: cleanUrl(href),
+    timestamp: ts,
+    origin: "saved",
+    caption: clip(caption, CAPTION_MAX),
+    author: ownerUsername(top) ?? profileUsername(top.filter((lv) => lv.dict)),
+  });
+}
+
+const USERNAME_RE = /^[A-Za-z0-9._]{1,30}$/;
+
+/** The owner group is the nested record with several fields (URL, name, username); hashtags have one each. */
+function ownerUsername(top: LabelValue[]): string | undefined {
+  for (const group of top) {
+    if (!Array.isArray(group.dict)) continue;
+    for (const record of group.dict as { dict?: LabelValue[] }[]) {
+      const fields = Array.isArray(record?.dict) ? record.dict : [];
+      if (fields.length < 2) continue;
+      const name = fields.map((f) => f.value).findLast((v): v is string => typeof v === "string" && USERNAME_RE.test(v));
+      if (name) return name;
     }
+  }
+  return undefined;
+}
+
+/** saved_posts.json / saved_collections.json, either export format. */
+function extractSaved(root: unknown, out: Map<string, ExtractedLink>) {
+  const entries = Array.isArray(root) ? root : root && typeof root === "object" ? Object.values(root).flat() : [];
+  for (const entry of entries) {
+    if (entry && typeof entry === "object" && Array.isArray((entry as { label_values?: unknown }).label_values)) {
+      extractSavedEntry(entry as { timestamp?: unknown; label_values: LabelValue[] }, out);
+      continue;
+    }
+    // Older format: `{ saved_saved_media: [{ title: "<author>", string_map_data: { "Saved on": { href, timestamp } } }] }`
+    const author = clip((entry as { title?: unknown })?.title, AUTHOR_MAX);
+    addFrom(entry, out, "saved", () => (author ? { author } : {}));
   }
 }
 
@@ -156,7 +218,7 @@ function extractFromEntry(name: string, text: string, out: Map<string, Extracted
       return; // malformed — skip rather than guess
     }
     if (isThread(root)) extractThread(root, out);
-    else if (isSaved(root)) extractSaved(root, out);
+    else if (isSaved(root) || originOfPath(name) === "saved") extractSaved(root, out);
     return;
   }
   const origin = originOfPath(name);

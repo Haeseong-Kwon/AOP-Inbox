@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import { normalizeUrl, type NormalizedSource } from "@/lib/sources/normalize";
 import { MAX_LINKS } from "./meta-export";
+import { truncate } from "@/lib/utils";
 
 export const importLinksSchema = z.object({
   links: z
@@ -13,7 +14,7 @@ export const importLinksSchema = z.object({
       z.object({
         url: z.string().max(2048),
         timestamp: z.number().int().positive().optional(),
-        caption: z.string().max(300).optional(),
+        caption: z.string().max(1000).optional(),
         author: z.string().max(100).optional(),
       }),
     )
@@ -116,7 +117,7 @@ export async function commitImport(userId: string, req: ImportLinksRequest): Pro
           importId: record.id,
           savedAt: savedAt ?? new Date(),
           // The caption Meta put in the export is often the only text a Reel has (no page is fetched).
-          originalTitle: caption ? caption.split("\n")[0].slice(0, 140) : null,
+          originalTitle: caption ? truncate(caption.split("\n")[0], 140) : null,
           contentText: caption ?? null,
           creatorName: author ?? null,
         })),

@@ -1,6 +1,7 @@
 import { EMBEDDING_DIMENSIONS } from "@/db/schema";
 import type { AnalyzeItemInput } from "./prompts/analyze-item";
 import { CATEGORIES, type Category, type ItemAnalysis } from "./schemas";
+import { truncate } from "@/lib/utils";
 
 /**
  * Deterministic offline stand-in for the LLM, used when no AI key is set and in
@@ -37,7 +38,7 @@ function topKeywords(text: string, n: number): string[] {
 
 function clip(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
-  const cut = text.slice(0, maxChars - 1);
+  const cut = truncate(text, maxChars - 1);
   const space = cut.lastIndexOf(" ");
   return `${(space > maxChars * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,.;:–—-]+$/, "")}…`;
 }
@@ -87,9 +88,20 @@ export function mockAnalyze(input: AnalyzeItemInput): ItemAnalysis {
   const best = scored.sort((a, b) => b.score - a.score)[0];
   const category: Category = best.score > 0 ? best.c : input.sourceType === "note" ? "Productivity" : "Inspiration";
   const keywords = topKeywords(body, 6);
-  const fallbackTitle = input.url ? `${input.sourceType === "instagram" ? "Instagram " : ""}${new URL(input.url).pathname.split("/").filter(Boolean)[0] ?? "link"} from ${new URL(input.url).hostname.replace(/^www\./, "")}` : "Untitled note";
-  const title = (input.title || firstSentences(input.userNote || input.content || "", 70) || fallbackTitle).slice(0, 90);
-  const summary = body ? firstSentences(input.description || input.content || input.userNote || body, 220) : "Saved link — no readable content was available, so this card is based on the URL only.";
+  // A caption-less Reel still has its author: "@handle" reads in any language.
+  const handle = input.creator ? `@${input.creator.replace(/^@/, "")}` : null;
+  const fallbackTitle = handle ?? (input.url ? `${input.sourceType === "instagram" ? "Instagram " : ""}${new URL(input.url).pathname.split("/").filter(Boolean)[0] ?? "link"} from ${new URL(input.url).hostname.replace(/^www\./, "")}` : "Untitled note");
+  const title = truncate(input.title || firstSentences(input.userNote || input.content || "", 70) || fallbackTitle, 90);
+  // A caption's first line is already the title; summarise what follows instead of repeating it.
+  const source = input.description || input.content || input.userNote || body;
+  const afterTitle = input.title && source.startsWith(input.title) ? source.slice(input.title.length).trim() : source;
+  const summary = body
+    ? afterTitle
+      ? firstSentences(afterTitle, 220)
+      : ""
+    : handle
+      ? "" // the title already says whose it is; the card shows the Reel itself
+      : "Saved link — no readable content was available, so this card is based on the URL only.";
   return {
     title,
     summary,
@@ -100,7 +112,7 @@ export function mockAnalyze(input: AnalyzeItemInput): ItemAnalysis {
       .split(/(?<=[.!?])\s+/)
       .filter((s) => s.length > 30)
       .slice(0, 3)
-      .map((s) => s.slice(0, 200)),
+      .map((s) => truncate(s, 200)),
     actionItems: [],
     whyItMatters: `Filed under ${category}${keywords[0] ? `, around ${keywords.slice(0, 2).join(" and ")}` : ""}. Add an AI key for a real explanation of why it matters.`,
     importanceScore: Math.min(0.85, 0.25 + Math.min(tokens.size, 120) / 240 + (input.userNote ? 0.15 : 0)),

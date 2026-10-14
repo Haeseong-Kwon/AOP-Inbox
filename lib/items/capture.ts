@@ -6,6 +6,7 @@ import { enqueueProcessing, reprocessItem } from "@/lib/ingestion/pipeline";
 import { log } from "@/lib/log";
 import { extractFirstUrl, normalizeUrl, parseUrl } from "@/lib/sources/normalize";
 import type { CaptureRequest } from "./types";
+import { truncate } from "@/lib/utils";
 
 export interface CaptureResult {
   itemId: string;
@@ -99,7 +100,7 @@ export async function captureInstagramShare(userId: string, share: InstagramShar
     log.info("capture.duplicate", { itemId: existing.id });
     return { itemId: existing.id, duplicate: true };
   }
-  const caption = share.caption?.trim().slice(0, CAPTION_LIMIT) || null;
+  const caption = (share.caption && truncate(share.caption.trim(), CAPTION_LIMIT)) || null;
   const [created] = await db
     .insert(items)
     .values({
@@ -107,7 +108,7 @@ export async function captureInstagramShare(userId: string, share: InstagramShar
       sourceType: "instagram",
       externalId: share.mediaId,
       contentKind: share.kind,
-      originalTitle: caption ? caption.split("\n")[0].slice(0, 140) : null,
+      originalTitle: caption ? truncate(caption.split("\n")[0], 140) : null,
       contentText: caption,
       // Nothing to enrich without a permalink; go straight to analysis.
       processingStage: "analyze",

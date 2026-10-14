@@ -14,7 +14,7 @@ import { relativeTime } from "@/lib/client/format";
 import { useLocale, useT } from "@/lib/i18n/client";
 import type { ImportPreview, ImportSummary } from "@/lib/import/service";
 import { extractLinksFromFile, ImportFileError, LINK_ORIGINS, type ExtractedLink, type LinkOrigin } from "@/lib/import/meta-export";
-import { cn } from "@/lib/utils";
+import { cn, truncate } from "@/lib/utils";
 
 type Step =
   | { kind: "pick" }
@@ -45,8 +45,12 @@ const pick = (links: ExtractedLink[], origins: LinkOrigin[]) => links.filter((l)
 /** Preview only needs URLs; captions ride along on commit unless the body would be too large. */
 const bare = (links: ExtractedLink[]) => links.map(({ url, timestamp }) => ({ url, timestamp }));
 const forCommit = (links: ExtractedLink[]) => {
-  const full = links.map(({ url, timestamp, caption, author }) => ({ url, timestamp, caption, author }));
-  return JSON.stringify(full).length < MAX_BODY ? full : bare(links);
+  // Full captions when they fit in one request; shorter ones for a big import; none as a last resort.
+  for (const max of [1000, 200]) {
+    const body = links.map(({ url, timestamp, caption, author }) => ({ url, timestamp, caption: caption && truncate(caption, max), author }));
+    if (JSON.stringify(body).length < MAX_BODY) return body;
+  }
+  return bare(links);
 };
 
 export function ImportFlow() {
