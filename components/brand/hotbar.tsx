@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { instagramShortcode, SourceTile } from "@/components/inbox/item-views";
 import { SourceIcon } from "@/components/inbox/source-icon";
 import { kindLabel } from "@/lib/client/format";
 import { useT } from "@/lib/i18n/client";
@@ -58,7 +59,12 @@ function Slot({ item, index }: { item: ItemSummary; index: number }) {
       aria-label={item.title}
       className="group mc-slot relative flex size-9 items-center justify-center outline-none sm:size-11"
     >
-      <span className="font-reading text-[17px] leading-none text-foreground/85 sm:text-[20px]">{initial}</span>
+      {item.thumbnailUrl || instagramShortcode(item) ? (
+        // The item itself sits in the slot, like an item icon.
+        <SourceTile item={item} className="absolute inset-[3px] rounded-none border-0" />
+      ) : (
+        <span className="font-reading text-[17px] leading-none text-foreground/85 sm:text-[20px]">{initial}</span>
+      )}
       <SourceIcon type={item.sourceType} className="absolute right-0.5 bottom-0.5 size-2.5 text-muted-foreground sm:size-3" />
       <span className="absolute top-0 left-0.5 font-pixel text-[8px] text-muted-foreground/80">{index + 1}</span>
       {/* hover/focus highlight, like a selected slot */}

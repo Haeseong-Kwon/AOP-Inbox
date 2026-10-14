@@ -1,7 +1,7 @@
 "use client";
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { toast } from "sonner";
 import type { CollectionNode } from "@/lib/collections/repository";
 import type { HomeStats } from "@/lib/items/repository";
@@ -153,19 +153,29 @@ export function useCapture() {
 
 /**
  * After a big import the queue can outlive one request. While items are still
- * pending, nudge the job runner now and then. Cheap no-op when the queue is empty.
+ * pending, keep the job runner going. Cheap no-op when the queue is empty.
  */
 export function useQueueNudge(active: boolean) {
-  const last = useRef(0);
   useEffect(() => {
     if (!active) return;
-    const tick = () => {
-      if (Date.now() - last.current < 15_000) return;
-      last.current = Date.now();
-      void fetch("/api/jobs/run", { method: "POST" }).catch(() => {});
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const run = async () => {
+      let processed = 0;
+      try {
+        const res = await fetch("/api/jobs/run", { method: "POST" });
+        processed = ((await res.json()) as { processed?: number }).processed ?? 0;
+      } catch {
+        // offline or busy — try again later
+      }
+      // While there's a backlog, drain back-to-back; otherwise look again in a bit.
+      if (!stopped) timer = setTimeout(run, processed > 0 ? 0 : 15_000);
     };
-    const timer = setInterval(tick, 5000);
-    return () => clearInterval(timer);
+    timer = setTimeout(run, 1_000);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
   }, [active]);
 }
 

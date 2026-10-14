@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ProcessingLine, SourceTile } from "@/components/inbox/item-views";
+import { InstagramEmbed, instagramShortcode, ProcessingLine, SourceTile } from "@/components/inbox/item-views";
 import { SourceIcon } from "@/components/inbox/source-icon";
 import { fullDate, kindLabel, relativeTime } from "@/lib/client/format";
 import { keys, useCheckActions, useDeleteItem, useItem, useRelated, useReprocess, useUpdateItem } from "@/lib/client/queries";
@@ -85,6 +85,7 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
   }
 
   const archived = item.status === "archived";
+  const embedCode = instagramShortcode(item);
   const copyLink = async () => {
     if (!item.sourceUrl) return;
     await navigator.clipboard.writeText(item.sourceUrl);
@@ -159,7 +160,7 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
         <div className="mx-auto flex max-w-[640px] flex-col gap-8 px-5 pt-6 pb-16 sm:px-8">
           <div className="flex flex-col gap-4">
             <div className="flex items-start gap-4">
-              {(item.thumbnailUrl || item.sourceType !== "note") && (
+              {!embedCode && (item.thumbnailUrl || item.sourceType !== "note") && (
                 <SourceTile item={item} className={cn(item.thumbnailUrl ? "h-24 w-24" : "h-16 w-16")} />
               )}
               <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5 text-[13px] text-muted-foreground">
@@ -194,6 +195,8 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
               </a>
             )}
           </div>
+
+          {embedCode && <InstagramEmbed key={embedCode} code={embedCode} title={item.title} />}
 
           {item.processingStatus !== "completed" && (
             <div className="rounded-lg border border-dashed px-4 py-3">

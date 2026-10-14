@@ -2,7 +2,7 @@
 
 import { Shulker } from "@/components/brand/shulker";
 import { Check, RotateCw, Star, Zap } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ItemSummary } from "@/lib/items/types";
 import { kindLabel, relativeTime } from "@/lib/client/format";
 import { useReprocess } from "@/lib/client/queries";
@@ -10,7 +10,7 @@ import { useLocale, useT } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { SourceIcon } from "./source-icon";
 
-/** Thumbnail, or a typographic stand-in for items we have no image for (most Reels). */
+/** Thumbnail, an Instagram cover, or a typographic stand-in for items we have no image for. */
 export function SourceTile({ item, className }: { item: ItemSummary; className?: string }) {
   const [broken, setBroken] = useState(false);
   if (item.thumbnailUrl && !broken) {
@@ -27,18 +27,99 @@ export function SourceTile({ item, className }: { item: ItemSummary; className?:
       />
     );
   }
-  // Monogram of the creator / site, like the letter on a library index card.
-  const name = (item.creatorName ?? item.domain ?? item.title).replace(/^[@#]/, "");
-  const letter = item.sourceType === "note" ? null : (name.match(/[\p{L}\p{N}]/u)?.[0] ?? "").toUpperCase();
+  const code = instagramShortcode(item);
+  if (code) {
+    return (
+      <InstagramCover code={code} className={className}>
+        <Monogram item={item} />
+      </InstagramCover>
+    );
+  }
   return (
     <div aria-hidden className={cn("relative flex shrink-0 items-center justify-center overflow-hidden rounded-md border bg-surface", className)}>
-      {letter ? (
-        <span className="font-reading text-[26px] leading-none text-foreground/75">{letter}</span>
-      ) : (
-        <SourceIcon type={item.sourceType} className="size-5 text-muted-foreground" />
-      )}
-      {letter && <SourceIcon type={item.sourceType} className="absolute right-1.5 bottom-1.5 size-3 text-muted-foreground/80" />}
+      <Monogram item={item} />
     </div>
+  );
+}
+
+/** Monogram of the creator / site, like the letter on a library index card. */
+function Monogram({ item }: { item: ItemSummary }) {
+  const name = (item.creatorName ?? item.domain ?? item.title).replace(/^[@#]/, "");
+  const letter = item.sourceType === "note" ? null : (name.match(/[\p{L}\p{N}]/u)?.[0] ?? "").toUpperCase();
+  if (!letter) return <SourceIcon type={item.sourceType} className="size-5 text-muted-foreground" />;
+  return (
+    <>
+      <span className="font-reading text-[26px] leading-none text-foreground/75">{letter}</span>
+      <SourceIcon type={item.sourceType} className="absolute right-1.5 bottom-1.5 size-3 text-muted-foreground/80" />
+    </>
+  );
+}
+
+const IG_MEDIA = /instagram\.com\/(?:[\w.]+\/)?(?:p|reels?|tv)\/([\w-]+)/i;
+
+/** Shortcode of an Instagram post/Reel we have a permalink for (DM-bot saves have none). */
+export function instagramShortcode(item: Pick<ItemSummary, "sourceType" | "sourceUrl">): string | null {
+  if (item.sourceType !== "instagram" || !item.sourceUrl) return null;
+  return item.sourceUrl.match(IG_MEDIA)?.[1] ?? null;
+}
+
+// Instagram's official embed, at its 326px minimum width: a 54px header, then a 4:5 media area.
+// The viewer's browser loads it from Instagram; we never fetch Instagram ourselves.
+const EMBED = { width: 326, header: 54, media: 407, full: 612 };
+export const instagramEmbedUrl = (code: string) => `https://www.instagram.com/p/${encodeURIComponent(code)}/embed/`;
+
+/** The Reel's cover, cropped out of the official embed. Not interactive; the stand-in shows until it loads. */
+function InstagramCover({ code, className, children }: { code: string; className?: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setBox({ w: entry.contentRect.width, h: entry.contentRect.height }));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  // Cover the tile with the media area, centred.
+  const scale = box ? Math.max(box.w / EMBED.width, box.h / EMBED.media) : 0;
+  return (
+    <div ref={ref} aria-hidden className={cn("relative flex shrink-0 items-center justify-center overflow-hidden rounded-md border bg-surface", className)}>
+      {children}
+      {box && box.w > 0 && (
+        <iframe
+          src={instagramEmbedUrl(code)}
+          title=""
+          tabIndex={-1}
+          loading="lazy"
+          scrolling="no"
+          sandbox="allow-scripts allow-same-origin"
+          referrerPolicy="strict-origin"
+          onLoad={() => setLoaded(true)}
+          className={cn("pointer-events-none absolute top-0 left-0 origin-top-left border-0 transition-opacity duration-300", loaded ? "opacity-100" : "opacity-0")}
+          style={{
+            width: EMBED.width,
+            height: EMBED.header + EMBED.media,
+            transform: `translate(${(box.w - EMBED.width * scale) / 2}px, ${-(EMBED.header + (EMBED.media - box.h / scale) / 2) * scale}px) scale(${scale})`,
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The playable official embed, for the detail view. */
+export function InstagramEmbed({ code, title }: { code: string; title: string }) {
+  return (
+    <iframe
+      src={instagramEmbedUrl(code)}
+      title={title}
+      loading="lazy"
+      scrolling="no"
+      sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+      referrerPolicy="strict-origin"
+      className="w-[326px] max-w-full rounded-lg border bg-white"
+      style={{ height: EMBED.full }}
+    />
   );
 }
 
