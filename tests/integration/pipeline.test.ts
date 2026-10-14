@@ -1,8 +1,8 @@
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { collectionItems, embeddings, items, itemTags, processingJobs } from "@/db/schema";
+import { collectionItems, collections, embeddings, items, itemTags, processingJobs, tags } from "@/db/schema";
 import { db } from "@/lib/db";
-import { drainQueue, reprocessItem } from "@/lib/ingestion/pipeline";
+import { drainQueue, pruneEmptyAutoCollections, reprocessItem } from "@/lib/ingestion/pipeline";
 import { captureItem } from "@/lib/items/capture";
 import { getItem, listItems, updateItem } from "@/lib/items/repository";
 import { enqueue, runJobs } from "@/lib/jobs/queue";
@@ -126,5 +126,26 @@ describe("item state", () => {
     const { itemId } = await captureItem(userId, { input: "private thought" });
     expect(await getItem("someone-else", itemId)).toBeNull();
     expect(await updateItem("someone-else", itemId, { favorite: true })).toBeNull();
+  });
+});
+
+describe("cleanup after deletes", () => {
+  it("prunes auto-made collections and tags nothing uses, and keeps your own shelves", async () => {
+    const { itemId } = await captureItem(userId, { input: "Batch agent tasks with git worktrees and review each branch" });
+    await drainQueue(20_000);
+    expect(await db.$count(collections, eq(collections.kind, "ai"))).toBeGreaterThan(0);
+    expect(await db.$count(tags)).toBeGreaterThan(0);
+    await db.insert(collections).values({ userId, kind: "manual", name: "Mine", slug: "mine" });
+
+    await db.delete(items).where(eq(items.id, itemId));
+    expect((await pruneEmptyAutoCollections()).collections).toBe(0); // just created: maybe still being linked
+    await db.execute(sql`update collections set created_at = now() - interval '2 hours'`);
+    await db.execute(sql`update tags set created_at = now() - interval '2 hours'`);
+    const pruned = await pruneEmptyAutoCollections();
+
+    expect(pruned.collections).toBeGreaterThan(0);
+    expect(await db.$count(collections, eq(collections.kind, "ai"))).toBe(0);
+    expect(await db.$count(tags)).toBe(0);
+    expect(await db.$count(collections, eq(collections.kind, "manual"))).toBe(1);
   });
 });

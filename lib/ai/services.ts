@@ -1,6 +1,6 @@
 import "server-only";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { embedMany, generateText, Output, streamText, type LanguageModelUsage } from "ai";
+import { embedMany, gateway, generateText, Output, streamText, type LanguageModelUsage } from "ai";
 import { aiUsage, EMBEDDING_DIMENSIONS } from "@/db/schema";
 import { db } from "@/lib/db";
 import { errorMessage, log } from "@/lib/log";
@@ -29,6 +29,11 @@ function sdk(config: AIConfig) {
     includeUsage: true,
   });
 }
+
+const chatModel = (config: AIConfig, id: string) => (config.provider === "gateway" ? gateway(id) : sdk(config).chatModel(id));
+const embeddingModel = (config: AIConfig, id: string) => (config.provider === "gateway" ? gateway.embeddingModel(id) : sdk(config).embeddingModel(id));
+/** Provider options are keyed by the upstream provider ("openai" behind "openai/…" on the gateway). */
+const optionsKey = (config: AIConfig, id: string) => (config.provider === "gateway" ? id.split("/")[0] : config.provider);
 
 // USD per 1M tokens [input, output]. Override with AI_PRICES='{"model":[in,out]}'. Unknown models log no cost.
 const DEFAULT_PRICES: Record<string, [number, number]> = {
@@ -97,7 +102,7 @@ export async function analyzeItem(input: AnalyzeItemInput, userId?: string): Pro
   const startedAt = Date.now();
   try {
     const result = await generateText({
-      model: sdk(config).chatModel(model),
+      model: chatModel(config, model),
       instructions: analyzeItemInstructions,
       prompt: analyzeItemPrompt(input),
       output: Output.object({ schema: itemAnalysisSchema }),
@@ -124,11 +129,11 @@ export async function embedTexts(values: string[], operation: string, userId?: s
   const startedAt = Date.now();
   try {
     const result = await embedMany({
-      model: sdk(config).embeddingModel(model),
+      model: embeddingModel(config, model),
       values,
       maxRetries: 2,
       // Asks the provider for exactly our column size (OpenAI v3 models support this).
-      providerOptions: { [config.provider]: { dimensions: EMBEDDING_DIMENSIONS } },
+      providerOptions: { [optionsKey(config, model)]: { dimensions: EMBEDDING_DIMENSIONS } },
     });
     await recordUsage({ userId, operation, model, startedAt, success: true, usage: result.usage });
     const wrong = result.embeddings.find((e) => e.length !== EMBEDDING_DIMENSIONS);
@@ -154,7 +159,7 @@ export async function* streamAnswer(question: string, items: AskContextItem[], u
   const model = config.models.strong;
   const startedAt = Date.now();
   const result = streamText({
-    model: sdk(config).chatModel(model),
+    model: chatModel(config, model),
     instructions: askInboxInstructions,
     prompt: askInboxPrompt(question, items, executions),
     temperature: 0.3,
@@ -197,7 +202,7 @@ export async function extractFacts(
   const startedAt = Date.now();
   try {
     const result = await generateText({
-      model: sdk(config).chatModel(model),
+      model: chatModel(config, model),
       instructions: extractFactsInstructions,
       prompt: extractFactsPrompt(input),
       output: Output.object({ schema: factsDraftSchema }),
@@ -223,7 +228,7 @@ export async function structureSetup(
   const startedAt = Date.now();
   try {
     const result = await generateText({
-      model: sdk(config).chatModel(model),
+      model: chatModel(config, model),
       instructions: structureSetupInstructions,
       prompt: structureSetupPrompt(input),
       output: Output.object({ schema: specDraftSchema }),

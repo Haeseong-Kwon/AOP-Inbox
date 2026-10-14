@@ -48,6 +48,11 @@ describe("AI config", () => {
     expect(getAIConfig({ AI_PROVIDER: "local", AI_API_KEY: "" }).provider).toBe("local");
     const openrouter = getAIConfig({ AI_PROVIDER: "openrouter", AI_API_KEY: "k", AI_MODEL: "a", AI_MODEL_STRONG: "b" });
     expect(openrouter).toMatchObject({ baseURL: "https://openrouter.ai/api/v1", models: { fast: "a", strong: "b" } });
+    // The AI Gateway needs no key on Vercel (OIDC) and uses "provider/model" IDs.
+    expect(getAIConfig({ AI_PROVIDER: "gateway" })).toMatchObject({
+      provider: "gateway",
+      models: { fast: "openai/gpt-4.1-mini", embedding: "openai/text-embedding-3-small" },
+    });
   });
 });
 

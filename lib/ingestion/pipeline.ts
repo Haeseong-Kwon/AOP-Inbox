@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { collectionItems, collections, embeddings, items, itemTags, tags, type Item } from "@/db/schema";
 import { analyzeItem, embedTexts, embeddingModelId } from "@/lib/ai/services";
 import { ANALYZE_ITEM_VERSION } from "@/lib/ai/prompts/analyze-item";
@@ -296,4 +296,28 @@ export async function enqueueStaleEmbeddings(userId: string): Promise<number> {
   await db.update(items).set({ processingStage: "embed", processingStatus: "pending" }).where(inArray(items.id, stale.map((s) => s.id)));
   for (const { id } of stale) await enqueueProcessing(id);
   return stale.length;
+}
+
+/**
+ * Auto-made shelves and tags that nothing points to any more (after deletes or an
+ * undone import). Children first, so a parent that still has a filled child stays.
+ * Only settled rows: an item being processed creates its shelf/tag a moment before linking it.
+ */
+export async function pruneEmptyAutoCollections(): Promise<{ collections: number; tags: number }> {
+  const settled = sql`now() - interval '1 hour'`;
+  const empty = and(
+    eq(collections.kind, "ai"),
+    lt(collections.createdAt, settled),
+    sql`not exists (select 1 from collection_items ci where ci.collection_id = "collections"."id")`,
+  );
+  const children = await db.delete(collections).where(and(empty, isNotNull(collections.parentId))).returning({ id: collections.id });
+  const parents = await db
+    .delete(collections)
+    .where(and(empty, isNull(collections.parentId), sql`not exists (select 1 from collections ch where ch.parent_id = "collections"."id")`))
+    .returning({ id: collections.id });
+  const unusedTags = await db
+    .delete(tags)
+    .where(and(lt(tags.createdAt, settled), sql`not exists (select 1 from item_tags it where it.tag_id = "tags"."id")`))
+    .returning({ id: tags.id });
+  return { collections: children.length + parents.length, tags: unusedTags.length };
 }
