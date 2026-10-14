@@ -1,11 +1,34 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 
+// Pages that work without a session.
+const PUBLIC = /^\/(api|login|offline)(\/|$)/;
+
+/**
+ * Production answers on one address only. A deployment's own URL
+ * (aop-inbox-<hash>-<team>.vercel.app) can't sign in — auth trusts the canonical
+ * origin — and a random-looking host with a login form reads as phishing to browsers.
+ */
+function canonicalRedirect(request: NextRequest): NextResponse | null {
+  const canonical = process.env.BETTER_AUTH_URL;
+  // Pages only: crons and webhooks may call a deployment URL directly and don't follow redirects.
+  if (process.env.VERCEL_ENV !== "production" || !canonical || request.nextUrl.pathname.startsWith("/api/")) return null;
+  if (!["GET", "HEAD"].includes(request.method)) return null;
+  const target = new URL(canonical);
+  if (request.nextUrl.host === target.host) return null;
+  const url = new URL(request.nextUrl.pathname + request.nextUrl.search, target);
+  return NextResponse.redirect(url, 308);
+}
+
 /**
  * Optimistic gate only (cookie presence). Real session validation happens in
  * every route handler and in the app layout — never trust this alone.
  */
 export function proxy(request: NextRequest) {
+  const redirect = canonicalRedirect(request);
+  if (redirect) return redirect;
+  if (PUBLIC.test(request.nextUrl.pathname)) return NextResponse.next();
+
   const hasSession = Boolean(getSessionCookie(request, { cookiePrefix: "aop" }));
   if (!hasSession) {
     const login = new URL("/login", request.url);
@@ -17,5 +40,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next|login|manifest.webmanifest|sw.js|icons|favicon.ico|robots.txt|offline).*)"],
+  matcher: ["/((?!_next|manifest.webmanifest|sw.js|icons|favicon.ico|robots.txt).*)"],
 };
