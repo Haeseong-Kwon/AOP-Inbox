@@ -5,6 +5,7 @@ import { Search, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { Shulker } from "@/components/brand/shulker";
 import { SourceIcon } from "@/components/inbox/source-icon";
 import { ItemListSkeleton } from "@/components/inbox/item-views";
 import { apiGet, qs } from "@/lib/client/api";
@@ -95,6 +96,7 @@ export function SearchView() {
           <ItemListSkeleton rows={4} />
         ) : hits.length === 0 ? (
           <div className="flex flex-col gap-2 px-1 pt-4">
+            <Shulker key={q} mood="no" size={26} className="mb-1" />
             <p className="text-[15px] font-medium">{t("No matches for “{q}”.", { q })}</p>
             <p className="text-sm text-muted-foreground">
               {askBefore}

@@ -68,7 +68,7 @@ function HomeMascot({ listening }: { listening: boolean }) {
       {stored && (
         <span aria-hidden className="item-drop absolute -top-2 left-1/2 -ml-[7px] size-[14px] rounded-[2px] bg-[var(--px-glow)] shadow-[inset_-2px_-2px_0_var(--px-head-shade)]" />
       )}
-      <Shulker mood={stored || listening ? "open" : "peek"} idle={!listening && !stored} size={76} className="h-auto w-full" title={t("Shulker")} />
+      <Shulker mood={stored ? "happy" : listening ? "open" : "peek"} idle={!listening && !stored} watch pokeable size={76} className="h-auto w-full" title={t("Shulker")} />
     </div>
   );
 }

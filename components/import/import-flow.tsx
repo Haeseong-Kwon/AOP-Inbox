@@ -1,9 +1,10 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { FileArchive, Loader2, ShieldCheck, Upload } from "lucide-react";
+import { FileArchive, ShieldCheck, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
+import { Shulker } from "@/components/brand/shulker";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { ImportStats } from "@/db/schema";
@@ -155,7 +156,7 @@ export function ImportFlow() {
 
       {step.kind === "reading" && (
         <div className="flex items-center gap-3 rounded-xl border px-5 py-6 text-[15px]" role="status">
-          <Loader2 className="size-4 animate-spin text-signal" aria-hidden />
+          <Shulker mood="think" size={18} />
           {t("Scanning {file} for links…", { file: step.fileName })}
         </div>
       )}
@@ -196,13 +197,14 @@ export function ImportFlow() {
 
       {step.kind === "importing" && (
         <div className="flex items-center gap-3 rounded-xl border px-5 py-6 text-[15px]" role="status">
-          <Loader2 className="size-4 animate-spin text-signal" aria-hidden />
+          <Shulker mood="think" size={18} />
           {t("Adding items to your inbox…")}
         </div>
       )}
 
       {step.kind === "done" && (
         <div className="flex flex-col items-start gap-4">
+          <Shulker mood="happy" size={40} />
           <p className="text-[22px] font-semibold tracking-[-0.015em]">{t("Imported {n} items.", { n: step.stats.created.toLocaleString() })}</p>
           <p className="text-[15px] leading-relaxed text-muted-foreground">
             {t("They’re in your inbox now, dated when you originally shared them. Summaries and collections fill in over the next few minutes — you can keep using the app.")}

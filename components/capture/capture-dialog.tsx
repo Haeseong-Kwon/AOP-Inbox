@@ -1,6 +1,7 @@
 "use client";
 
 import { emitStored } from "@/components/brand/events";
+import { Shulker } from "@/components/brand/shulker";
 import { ClipboardPaste, CornerDownLeft, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
@@ -54,7 +55,7 @@ export function CaptureForm({ mode, onDone, autoFocus = true, rows = 4 }: { mode
           if (duplicate) toast(t("Already in your Inbox"), { description: note.trim() ? t("Your note was added to it.") : item.title, action: open });
           else {
             emitStored();
-            toast.success(t("Stored in your shulker box"), { description: t("The shulker is reading it in the background."), action: open });
+            toast.success(t("Stored in your shulker box"), { icon: <Shulker mood="happy" size={16} />, description: t("The shulker is reading it in the background."), action: open });
           }
         },
         onError: (error) => toast.error(error.message),

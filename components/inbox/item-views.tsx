@@ -65,7 +65,7 @@ export function ProcessingLine({ item }: { item: Pick<ItemSummary, "id" | "proce
   if (item.processingStatus === "pending" || item.processingStatus === "processing") {
     return (
       <span className="inline-flex items-center gap-2 text-[13px] text-muted-foreground" role="status">
-        <Shulker size={11} idle className="-mt-1" />
+        <Shulker mood="think" size={11} className="-mt-1" />
         {t("The shulker is reading it…")}
       </span>
     );

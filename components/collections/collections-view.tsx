@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { Shulker } from "@/components/brand/shulker";
 import { Button } from "@/components/ui/button";
 import { apiSend } from "@/lib/client/api";
 import { keys, useCollections } from "@/lib/client/queries";
@@ -42,7 +43,10 @@ export function CollectionsView() {
       {isError && <p className="text-sm text-muted-foreground">{error.message}</p>}
 
       {data && ai.length === 0 && (
-        <p className="pb-10 text-[15px] text-muted-foreground">{t("Collections appear automatically once your first items are understood.")}</p>
+        <div className="flex items-center gap-3 pb-10">
+          <Shulker mood="peek" idle pokeable size={26} />
+          <p className="text-[15px] text-muted-foreground">{t("Collections appear automatically once your first items are understood.")}</p>
+        </div>
       )}
 
       {ai.length > 0 && (

@@ -4,6 +4,7 @@ import { ArrowUp, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { Shulker } from "@/components/brand/shulker";
 import { SourceIcon } from "@/components/inbox/source-icon";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n/client";
@@ -121,7 +122,7 @@ export function AskView() {
               <AnswerText text={ex.answer} onCite={(n) => jumpToSource(ex.id, n)} />
             ) : ex.status === "streaming" ? (
               <p className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
-                <Loader2 className="size-4 animate-spin" aria-hidden /> {t("Reading your saved items…")}
+                <Shulker mood="think" size={14} /> {t("Reading your saved items…")}
               </p>
             ) : null}
             {ex.status === "error" && <p className="text-sm text-destructive">{t(ex.error ?? "")}</p>}

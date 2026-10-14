@@ -73,7 +73,7 @@ export function InstagramDmSetup() {
     return (
       <div className="flex w-full flex-col gap-3 rounded-lg border border-signal/40 px-4 py-3.5">
         <div className="flex items-center gap-3">
-          <Shulker mood="open" size={22} />
+          <Shulker mood="open" watch size={22} />
           <p className="text-[14px]">
             {who ? (
               <Rich text="**{who}** sent your code. Is this your Instagram account?" vars={{ who }} />
@@ -99,7 +99,7 @@ export function InstagramDmSetup() {
     return (
       <div className="flex w-full flex-col gap-3">
         <div className="flex items-center gap-3 rounded-lg border px-4 py-3">
-          <Shulker mood="peek" size={22} />
+          <Shulker mood="peek" idle pokeable size={22} />
           <div className="min-w-0 flex-1 text-[14px]">
             <p className="font-medium">{data.username ? t("@{username} → {bot}", { username: data.username, bot }) : t("Connected to {bot}", { bot })}</p>
             <p className="text-[13px] text-muted-foreground">
@@ -158,7 +158,7 @@ export function InstagramDmSetup() {
           </li>
           <li className="text-muted-foreground">
             <span className="inline-flex items-center gap-2">
-              <Loader2 className="size-3.5 animate-spin" aria-hidden /> {t("Waiting for your message…")}
+              <Shulker mood="think" size={14} /> {t("Waiting for your message…")}
             </span>
           </li>
         </ol>

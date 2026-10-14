@@ -10,6 +10,7 @@ export const PALETTE: Record<string, string> = {
   E: "var(--px-eye)",
   M: "var(--px-eye)",
   G: "var(--px-glow)",
+  R: "var(--px-heart)",
 };
 
 /** One <rect> per horizontal run of the same colour; `.` is transparent. */

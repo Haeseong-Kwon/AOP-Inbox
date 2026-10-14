@@ -35,7 +35,7 @@ export function LoginForm({ dev }: LoginFormProps) {
   // The shulker peeks at your email, shuts its shell while you type a password, and flinches on a wrong one.
   const [focus, setFocus] = useState<"email" | "password" | null>(null);
   const [hurt, setHurt] = useState(0);
-  const mood: ShulkerMood = pending ? "open" : focus === "password" ? "closed" : focus === "email" ? "peek" : "closed";
+  const mood: ShulkerMood = pending ? "think" : focus === "password" ? "closed" : focus === "email" ? "peek" : "closed";
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +65,7 @@ export function LoginForm({ dev }: LoginFormProps) {
 
   return (
     <div className="w-full max-w-[360px]">
-      <Shulker key={hurt} mood={mood} idle={!focus && !pending} hurt={hurt > 0} size={44} className="mb-6" title={t("Shulker")} />
+      <Shulker mood={mood} idle={!focus && !pending} hurt={hurt} watch pokeable size={44} className="mb-6" title={t("Shulker")} />
       <h1 className="text-[24px] font-semibold tracking-[-0.02em]">{mode === "signin" ? t("Sign in to AOP Inbox") : t("Create your account")}</h1>
       <p className="mt-1.5 mb-8 text-[15px] text-muted-foreground">{t("Capture once. Understand automatically. Find anything later.")}</p>
       <form onSubmit={submit} className="flex flex-col gap-3">

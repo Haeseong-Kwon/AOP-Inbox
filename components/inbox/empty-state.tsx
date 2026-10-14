@@ -23,7 +23,7 @@ export function InboxEmpty({ filtered }: { filtered: boolean }) {
   }
   return (
     <div className="flex flex-col items-start gap-4 px-5 py-16 sm:px-8 sm:py-24">
-      <Shulker mood="sleep" size={52} title={t("Shulker")} />
+      <Shulker mood="sleep" pokeable size={52} title={t("Shulker")} />
       <h2 className="text-xl font-semibold tracking-[-0.01em]">{t("Your shulker box is empty.")}</h2>
       <p className="max-w-sm text-[15px] leading-relaxed text-muted-foreground">
         {t("The shulker is napping. Feed it a Reel, a link, or something worth remembering.")}

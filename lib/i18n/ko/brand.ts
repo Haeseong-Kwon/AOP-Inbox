@@ -54,4 +54,6 @@ export const brand: Record<string, string> = {
   "To save here, get a link code in AOP Inbox → Settings → Instagram DM and send it in this chat.": "여기로 저장하려면 AOP Inbox → 설정 → Instagram DM에서 연결 코드를 받아 이 대화방에 보내 주세요.",
   "The shulker keeps shared Reels and posts, links, and notes. Photos and voice messages aren't saved.": "셜커는 공유한 릴스·게시물, 링크, 메모를 보관해요. 사진과 음성 메시지는 저장하지 않아요.",
   "Couldn't save that one. Try sharing it again in a moment.": "저장하지 못했어요. 잠시 후 다시 공유해 주세요.",
+  "The shulker dropped this page.": "셜커가 이 페이지를 떨어뜨렸어요.",
+  "Something broke while loading it. Try again, or head back to Home.": "불러오는 중에 문제가 생겼어요. 다시 시도하거나 홈으로 돌아가 주세요.",
 };

@@ -136,6 +136,7 @@
   --px-head-shade: #bdb879;
   --px-eye: #24182c;
   --px-glow: #f3efb6;
+  --px-heart: #e0473f;
   --mc-xp: #7ee32a;
   --mc-tooltip-bg: #100010;
   --mc-tooltip-edge: #2d0a63;
@@ -150,13 +151,59 @@
 .shulker-head {
   transition: transform 180ms steps(3, end);
 }
-.shulker-hurt {
-  animation: shulker-hurt 450ms steps(2, end);
+/* Blinks every few seconds while its eyes are open. */
+.shulker-eyes {
+  animation: shulker-blink 4.6s steps(1, end) infinite;
 }
-@keyframes shulker-hurt {
-  0%, 60% { filter: sepia(1) saturate(6) hue-rotate(-50deg) brightness(0.9); transform: translateX(-1px); }
-  30% { transform: translateX(1px); }
-  100% { filter: none; transform: none; }
+@keyframes shulker-blink {
+  0%, 94%, 100% { opacity: 1; }
+  95%, 97% { opacity: 0; }
+}
+/* Thinking: the lid chatters and the eyes scan side to side. */
+.shulker[data-mood="think"] .shulker-lid {
+  animation: shulker-chatter 1.3s steps(1, end) infinite;
+}
+@keyframes shulker-chatter {
+  0%, 100% { transform: translateY(-2px); }
+  18% { transform: translateY(-4px); }
+  30% { transform: translateY(-1px); }
+  55% { transform: translateY(-3px); }
+  70% { transform: translateY(-1px); }
+}
+.shulker[data-mood="think"] .shulker-eyes {
+  animation: shulker-blink 4.6s steps(1, end) infinite, shulker-scan 1.8s steps(1, end) infinite;
+}
+@keyframes shulker-scan {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-1px); }
+  60% { transform: translateX(1px); }
+}
+/* Happy: little hops with hearts floating up. */
+.shulker[data-mood="happy"] .shulker-rig {
+  animation: shulker-hop 700ms steps(1, end) 2;
+}
+@keyframes shulker-hop {
+  0%, 60%, 100% { transform: none; }
+  20% { transform: translateY(-2px); }
+  40% { transform: translateY(-1px); }
+}
+.shulker-heart {
+  opacity: 0;
+  animation: shulker-heart 1.2s steps(6, end) forwards;
+}
+@keyframes shulker-heart {
+  0% { opacity: 0; transform: translateY(2px); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-5px); }
+}
+/* No: shakes its shell. */
+.shulker[data-mood="no"] .shulker-rig {
+  animation: shulker-no 520ms steps(1, end) 1;
+}
+@keyframes shulker-no {
+  0%, 100% { transform: none; }
+  15%, 55% { transform: translateX(-1px); }
+  35%, 75% { transform: translateX(1px); }
 }
 .shulker-zzz {
   animation: shulker-zzz 2.4s steps(4, end) infinite;
@@ -165,6 +212,9 @@
   0% { opacity: 0; transform: translateY(2px); }
   40% { opacity: 1; }
   100% { opacity: 0; transform: translateY(-2px); }
+}
+a:hover .shulker-box:not([data-open]) .shulker-lid {
+  transform: translateY(-1px);
 }
 .shulker-box[data-open] .shulker-lid {
   transition-duration: 120ms;
@@ -218,7 +268,8 @@
 @media (prefers-reduced-motion: reduce) {
   .shulker-lid,
   .shulker-head { transition: none; }
-  .shulker-hurt, .shulker-zzz, .item-drop, .xp-orb { animation: none; }
+  .shulker-zzz, .item-drop, .xp-orb, .shulker-eyes, .shulker-heart,
+  .shulker[data-mood] .shulker-rig, .shulker[data-mood] .shulker-lid, .shulker[data-mood] .shulker-eyes { animation: none; }
   .item-drop, .xp-orb { opacity: 0; }
 }
 
