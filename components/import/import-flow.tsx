@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileArchive, ShieldCheck, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
@@ -8,10 +8,12 @@ import { Shulker } from "@/components/brand/shulker";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { ImportStats } from "@/db/schema";
-import { apiSend } from "@/lib/client/api";
-import { useT } from "@/lib/i18n/client";
-import type { ImportPreview } from "@/lib/import/service";
-import { extractLinksFromFile, ImportFileError, type ExtractedLink } from "@/lib/import/meta-export";
+import { toast } from "sonner";
+import { apiGet, apiSend } from "@/lib/client/api";
+import { relativeTime } from "@/lib/client/format";
+import { useLocale, useT } from "@/lib/i18n/client";
+import type { ImportPreview, ImportSummary } from "@/lib/import/service";
+import { extractLinksFromFile, ImportFileError, LINK_ORIGINS, type ExtractedLink, type LinkOrigin } from "@/lib/import/meta-export";
 import { cn } from "@/lib/utils";
 
 type Step =
@@ -31,17 +33,34 @@ function Row({ label, value, strong }: { label: string; value: number; strong?: 
   );
 }
 
+const ORIGIN_LABELS: Record<LinkOrigin, { label: string; hint: string }> = {
+  saved: { label: "Saved", hint: "Posts and Reels you bookmarked in Instagram." },
+  self: { label: "Sent to yourself", hint: "Your chat with yourself." },
+  dm: { label: "Chats with other people", hint: "Everything shared in your other conversations — usually a lot." },
+};
+const DEFAULT_ORIGINS: LinkOrigin[] = ["saved", "self"];
+const MAX_BODY = 3_800_000;
+
+const pick = (links: ExtractedLink[], origins: LinkOrigin[]) => links.filter((l) => origins.includes(l.origin ?? "dm"));
+/** Preview only needs URLs; captions ride along on commit unless the body would be too large. */
+const bare = (links: ExtractedLink[]) => links.map(({ url, timestamp }) => ({ url, timestamp }));
+const forCommit = (links: ExtractedLink[]) => {
+  const full = links.map(({ url, timestamp, caption, author }) => ({ url, timestamp, caption, author }));
+  return JSON.stringify(full).length < MAX_BODY ? full : bare(links);
+};
+
 export function ImportFlow() {
   const [step, setStep] = useState<Step>({ kind: "pick" });
   const [error, setError] = useState<string | null>(null);
   const [includeOther, setIncludeOther] = useState(false);
+  const [origins, setOrigins] = useState<LinkOrigin[]>(DEFAULT_ORIGINS);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
   const t = useT();
 
-  const preview = async (links: ExtractedLink[], include: boolean) =>
-    apiSend<ImportPreview>("/api/import/preview", "POST", { links, includeOtherLinks: include });
+  const preview = async (links: ExtractedLink[], include: boolean, from: LinkOrigin[]) =>
+    apiSend<ImportPreview>("/api/import/preview", "POST", { links: bare(pick(links, from)), includeOtherLinks: include });
 
   const handleFile = async (file: File) => {
     setError(null);
@@ -50,11 +69,11 @@ export function ImportFlow() {
       // Parsed entirely in this browser tab — only links and timestamps are sent.
       const links = await extractLinksFromFile(file);
       if (links.length === 0) {
-        setError("We didn't find any links in this file. Make sure it's the Messages export in JSON format.");
+        setError("No saved posts or DM links in this file. Make sure the export includes Messages or Saved, in JSON format.");
         setStep({ kind: "pick" });
         return;
       }
-      setStep({ kind: "preview", fileName: file.name, links, preview: await preview(links, includeOther) });
+      setStep({ kind: "preview", fileName: file.name, links, preview: await preview(links, includeOther, origins) });
     } catch (e) {
       setError(e instanceof ImportFileError ? e.message : (e as Error).message || "We couldn't read this file.");
       setStep({ kind: "pick" });
@@ -63,12 +82,18 @@ export function ImportFlow() {
 
   const toggleOther = async (value: boolean) => {
     setIncludeOther(value);
-    if (step.kind === "preview") setStep({ ...step, preview: await preview(step.links, value) });
+    if (step.kind === "preview") setStep({ ...step, preview: await preview(step.links, value, origins) });
+  };
+
+  const toggleOrigin = async (origin: LinkOrigin, on: boolean) => {
+    const next = LINK_ORIGINS.filter((o) => (o === origin ? on : origins.includes(o)));
+    setOrigins(next);
+    if (step.kind === "preview") setStep({ ...step, preview: await preview(step.links, includeOther, next) });
   };
 
   const commit = async () => {
     if (step.kind !== "preview") return;
-    const links = step.links;
+    const links = forCommit(pick(step.links, origins));
     setStep({ kind: "importing" });
     try {
       const { stats } = await apiSend<{ stats: ImportStats }>("/api/import/commit", "POST", { links, includeOtherLinks: includeOther });
@@ -109,7 +134,7 @@ export function ImportFlow() {
                 ),
               )}
             </li>
-            <li>{t("Choose Messages, format JSON, and request the download.")}</li>
+            <li>{t("Choose only Messages and Saved, format JSON, and request the download.")}</li>
             <li>{t("When Meta emails you, download the .zip and drop it here.")}</li>
           </ol>
           <button
@@ -146,11 +171,15 @@ export function ImportFlow() {
               e.target.value = "";
             }}
           />
+          <p className="mt-3 text-[13px] text-muted-foreground">
+            {t("Only Saved and DMs are read. What you viewed, liked or saw in ads is skipped, even in a full export.")}
+          </p>
           {error && (
             <p role="alert" className="mt-4 text-sm text-destructive">
               {t(error)}
             </p>
           )}
+          <PastImports />
         </>
       )}
 
@@ -177,6 +206,21 @@ export function ImportFlow() {
               <Row label="New items" value={step.preview.newItems} strong />
             </dl>
           </div>
+          <fieldset className="flex flex-col gap-3">
+            <legend className="pb-2 text-[14.5px] font-medium">{t("Take from")}</legend>
+            {LINK_ORIGINS.map((o) => {
+              const n = step.links.filter((l) => (l.origin ?? "dm") === o).length;
+              return (
+                <label key={o} className={cn("flex items-center justify-between gap-4 text-[14.5px]", n === 0 && "opacity-50")}>
+                  <span>
+                    {t(ORIGIN_LABELS[o].label)} <span className="text-muted-foreground tabular-nums">· {n.toLocaleString()}</span>
+                    <span className="block text-[13px] text-muted-foreground">{t(ORIGIN_LABELS[o].hint)}</span>
+                  </span>
+                  <Switch checked={origins.includes(o)} disabled={n === 0} onCheckedChange={(v) => toggleOrigin(o, v)} />
+                </label>
+              );
+            })}
+          </fieldset>
           <label className="flex items-center justify-between gap-4 text-[14.5px]">
             <span>
               {t("Also import other links")}
@@ -215,5 +259,63 @@ export function ImportFlow() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Earlier imports, with a way to take back what you never touched. */
+function PastImports() {
+  const t = useT();
+  const locale = useLocale();
+  const qc = useQueryClient();
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { data } = useQuery({ queryKey: ["imports"], queryFn: () => apiGet<ImportSummary[]>("/api/import") });
+  if (!data?.length) return null;
+
+  const undo = async (id: string) => {
+    setBusy(true);
+    try {
+      const { removed } = await apiSend<{ removed: number }>(`/api/import/${id}`, "DELETE");
+      toast(t("Removed {n} items you hadn't opened.", { n: removed.toLocaleString() }));
+      setConfirming(null);
+      void qc.invalidateQueries();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="mt-12 flex flex-col gap-3">
+      <h2 className="text-[15px] font-semibold">{t("Earlier imports")}</h2>
+      <ul className="flex flex-col divide-y border-y text-[14.5px]">
+        {data.map((imp) => (
+          <li key={imp.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <span>
+              {relativeTime(imp.createdAt, locale)}
+              <span className="block text-[13px] text-muted-foreground">
+                {t("{n} items still in your inbox", { n: imp.remaining.toLocaleString() })}
+              </span>
+            </span>
+            {confirming === imp.id ? (
+              <span className="flex gap-2">
+                <Button size="sm" variant="destructive" onClick={() => undo(imp.id)} disabled={busy}>
+                  {t("Remove unopened items")}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirming(null)} disabled={busy}>
+                  {t("Cancel")}
+                </Button>
+              </span>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setConfirming(imp.id)}>
+                {t("Undo import")}
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="text-[13px] text-muted-foreground">{t("Undo keeps anything you've opened, favorited or noted.")}</p>
+    </section>
   );
 }

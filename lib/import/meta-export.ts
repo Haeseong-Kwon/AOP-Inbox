@@ -2,15 +2,28 @@ import { unzip, type UnzipFileInfo } from "fflate";
 
 /**
  * Meta "Download Your Information" parsing. Runs in the browser: the archive is
- * unpacked on-device and only {url, timestamp} pairs are sent to the server.
- * The export schema changes over time, so nothing here depends on a fixed
- * nesting — we walk every value and pick URLs out of any string.
+ * unpacked on-device and only links (with date, and the caption/author Meta
+ * attached to a shared post) are sent to the server.
+ *
+ * Only two parts of the export are read: **Saved** and **DM threads**. A full
+ * export also lists everything you viewed, liked or were shown in ads — those
+ * files are never opened. Within a file, nothing depends on a fixed nesting:
+ * we walk every value and pick URLs out of any string.
  */
+
+/** Where a link came from: your Saved, your chat with yourself, or a chat with someone else. */
+export type LinkOrigin = "saved" | "self" | "dm";
+export const LINK_ORIGINS: readonly LinkOrigin[] = ["saved", "self", "dm"];
 
 export interface ExtractedLink {
   url: string;
   /** epoch ms of the closest enclosing message, if any */
   timestamp?: number;
+  origin?: LinkOrigin;
+  /** The shared post's caption (DM shares only), trimmed. */
+  caption?: string;
+  /** The post's author username. */
+  author?: string;
 }
 
 export const MAX_LINKS = 20_000;
@@ -19,6 +32,13 @@ const MAX_ENTRY_BYTES = 64 * 1024 ** 2; // per uncompressed text file
 const MAX_TOTAL_TEXT_BYTES = 768 * 1024 ** 2; // zip-bomb guard
 const URL_RE = /https?:\/\/[^\s<>"'`\\]+/gi;
 const TEXT_ENTRY_RE = /\.(json|html?)$/i;
+// your_instagram_activity/saved/saved_posts.json · …/messages/inbox/<thread>/message_1.json (older exports: no prefix).
+// message_requests (strangers) and everything else are skipped.
+const SAVED_PATH_RE = /(^|\/)saved\/[^/]+\.(json|html?)$/i;
+const DM_PATH_RE = /(^|\/)messages\/inbox\/[^/]+\/[^/]+\.(json|html?)$/i;
+const CAPTION_MAX = 280;
+const AUTHOR_MAX = 100;
+const PRIORITY: Record<LinkOrigin, number> = { saved: 3, self: 2, dm: 1 };
 
 function cleanUrl(raw: string): string {
   return raw.replace(/&amp;/g, "&").replace(/[),.;!?\]}]+$/, "");
@@ -60,22 +80,94 @@ export function extractLinksFromText(text: string, out: Map<string, ExtractedLin
   return out;
 }
 
-function extractFromEntry(name: string, text: string, out: Map<string, ExtractedLink>) {
-  if (/\.json$/i.test(name)) {
-    try {
-      extractLinksFromJson(JSON.parse(text), out);
-      return;
-    } catch {
-      // Malformed JSON — fall through to plain-text scanning.
+/** Meta writes UTF-8 bytes as \u00XX escapes ("ì\u0095\u0088" for "안"). Undo that. */
+export function fixMetaText(text: string): string {
+  if (!/[\u0080-\u00ff]/.test(text) || /[^\u0000-\u00ff]/.test(text)) return text;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(text, (c) => c.charCodeAt(0)));
+  } catch {
+    return text;
+  }
+}
+
+const clip = (value: unknown, max: number) => (typeof value === "string" && value.trim() ? fixMetaText(value.trim()).slice(0, max) : undefined);
+
+/** Saved beats your own chat beats someone else's; the earliest date wins. */
+function addLink(out: Map<string, ExtractedLink>, link: ExtractedLink) {
+  const prev = out.get(link.url);
+  if (!prev) {
+    if (out.size < MAX_LINKS) out.set(link.url, link);
+    return;
+  }
+  const better = PRIORITY[link.origin!] > PRIORITY[prev.origin!];
+  out.set(link.url, {
+    url: link.url,
+    origin: better ? link.origin : prev.origin,
+    timestamp: prev.timestamp && link.timestamp ? Math.min(prev.timestamp, link.timestamp) : (prev.timestamp ?? link.timestamp),
+    caption: prev.caption ?? link.caption,
+    author: prev.author ?? link.author,
+  });
+}
+
+function addFrom(value: unknown, out: Map<string, ExtractedLink>, origin: LinkOrigin, extra: (url: string) => Partial<ExtractedLink> = () => ({})) {
+  for (const link of extractLinksFromJson(value).values()) addLink(out, { ...link, origin, ...extra(link.url) });
+}
+
+type Thread = { participants?: { name?: unknown }[]; messages: { share?: { link?: unknown; share_text?: unknown; original_content_owner?: unknown } }[] };
+
+function extractThread(thread: Thread, out: Map<string, ExtractedLink>) {
+  const names = new Set((thread.participants ?? []).map((p) => p.name));
+  const origin: LinkOrigin = names.size <= 1 ? "self" : "dm";
+  for (const message of thread.messages) {
+    const share = message?.share;
+    const shared = typeof share?.link === "string" ? cleanUrl(share.link) : null;
+    addFrom(message, out, origin, (url) =>
+      url === shared ? { caption: clip(share!.share_text, CAPTION_MAX), author: clip(share!.original_content_owner, AUTHOR_MAX) } : {},
+    );
+  }
+}
+
+/** saved_posts.json / saved_collections.json: `{ saved_saved_media: [{ title: "<author>", string_map_data: {…href…} }] }` */
+function extractSaved(root: Record<string, unknown>, out: Map<string, ExtractedLink>) {
+  for (const list of Object.values(root)) {
+    for (const entry of Array.isArray(list) ? list : [list]) {
+      const author = clip((entry as { title?: unknown })?.title, AUTHOR_MAX);
+      addFrom(entry, out, "saved", () => (author ? { author } : {}));
     }
   }
-  extractLinksFromText(text, out);
+}
+
+function originOfPath(name: string): LinkOrigin | null {
+  if (SAVED_PATH_RE.test(name) || /^saved_[^/]*\.(json|html?)$/i.test(name)) return "saved";
+  if (DM_PATH_RE.test(name) || /^message_\d+\.(json|html?)$/i.test(name)) return "dm";
+  return null;
+}
+
+const isThread = (root: unknown): root is Thread => Boolean(root && typeof root === "object" && Array.isArray((root as Thread).messages));
+const isSaved = (root: unknown): root is Record<string, unknown> =>
+  Boolean(root && typeof root === "object" && Object.keys(root).some((k) => k.startsWith("saved_saved")));
+
+function extractFromEntry(name: string, text: string, out: Map<string, ExtractedLink>) {
+  if (/\.json$/i.test(name)) {
+    let root: unknown;
+    try {
+      root = JSON.parse(text);
+    } catch {
+      return; // malformed — skip rather than guess
+    }
+    if (isThread(root)) extractThread(root, out);
+    else if (isSaved(root)) extractSaved(root, out);
+    return;
+  }
+  const origin = originOfPath(name);
+  if (origin) for (const link of extractLinksFromText(text).values()) addLink(out, { ...link, origin });
 }
 
 function unzipTextEntries(data: Uint8Array): Promise<Record<string, Uint8Array>> {
   let budget = MAX_TOTAL_TEXT_BYTES;
   const filter = (file: UnzipFileInfo) => {
-    if (!TEXT_ENTRY_RE.test(file.name) || file.originalSize > MAX_ENTRY_BYTES) return false;
+    // Only Saved and DM threads; viewed/liked/ads history is never opened.
+    if (!TEXT_ENTRY_RE.test(file.name) || !originOfPath(file.name.toLowerCase()) || file.originalSize > MAX_ENTRY_BYTES) return false;
     budget -= file.originalSize;
     return budget >= 0;
   };
@@ -100,7 +192,7 @@ export async function extractLinksFromFile(file: File): Promise<ExtractedLink[]>
     const decoder = new TextDecoder();
     for (const [entryName, bytes] of Object.entries(entries)) extractFromEntry(entryName, decoder.decode(bytes), out);
   } else if (/\.(json|html?)$/.test(name)) {
-    extractFromEntry(name, await file.text(), out);
+    extractFromEntry(name.split(/[\\/]/).pop()!, await file.text(), out);
   } else {
     throw new ImportFileError("Upload the .zip from Meta, or a .json / .html file from inside it.");
   }

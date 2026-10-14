@@ -39,7 +39,8 @@ async function claim(limit: number): Promise<Job[]> {
       select id from processing_jobs
       where (status = 'pending' and run_after <= now())
          or (status = 'processing' and locked_at < now() - ${STALE_LOCK}::interval)
-      order by run_after
+      -- Newest first: something you just saved isn't stuck behind a big import's backlog.
+      order by run_after desc
       limit ${limit}
       for update skip locked
     )

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { imports, items, processingJobs, type ImportStats } from "@/db/schema";
 import { db } from "@/lib/db";
@@ -9,7 +9,14 @@ import { MAX_LINKS } from "./meta-export";
 
 export const importLinksSchema = z.object({
   links: z
-    .array(z.object({ url: z.string().max(2048), timestamp: z.number().int().positive().optional() }))
+    .array(
+      z.object({
+        url: z.string().max(2048),
+        timestamp: z.number().int().positive().optional(),
+        caption: z.string().max(300).optional(),
+        author: z.string().max(100).optional(),
+      }),
+    )
     .max(MAX_LINKS),
   includeOtherLinks: z.boolean().default(false),
 });
@@ -23,6 +30,8 @@ export interface ImportPreview extends Omit<ImportStats, "created"> {
 interface Candidate {
   source: NormalizedSource;
   savedAt?: Date;
+  caption?: string;
+  author?: string;
 }
 
 const CHUNK = 500;
@@ -38,7 +47,13 @@ function classify(links: ImportLinksRequest["links"]) {
     const prev = unique.get(source.canonicalUrl);
     // Keep the earliest time it was shared — that's when it was "saved".
     const savedAt = link.timestamp ? new Date(link.timestamp) : undefined;
-    if (!prev || (savedAt && (!prev.savedAt || savedAt < prev.savedAt))) unique.set(source.canonicalUrl, { source, savedAt });
+    const earlier = !prev || (savedAt && (!prev.savedAt || savedAt < prev.savedAt));
+    unique.set(source.canonicalUrl, {
+      source,
+      savedAt: earlier ? savedAt : prev.savedAt,
+      caption: prev?.caption ?? link.caption,
+      author: prev?.author ?? link.author,
+    });
   }
   return { totalLinks, unique: [...unique.values()] };
 }
@@ -91,7 +106,7 @@ export async function commitImport(userId: string, req: ImportLinksRequest): Pro
     const rows = await db
       .insert(items)
       .values(
-        part.map(({ source, savedAt }) => ({
+        part.map(({ source, savedAt, caption, author }) => ({
           userId,
           sourceType: source.sourceType,
           sourceUrl: source.sourceUrl,
@@ -100,6 +115,10 @@ export async function commitImport(userId: string, req: ImportLinksRequest): Pro
           contentKind: source.contentKind,
           importId: record.id,
           savedAt: savedAt ?? new Date(),
+          // The caption Meta put in the export is often the only text a Reel has (no page is fetched).
+          originalTitle: caption ? caption.split("\n")[0].slice(0, 140) : null,
+          contentText: caption ?? null,
+          creatorName: author ?? null,
         })),
       )
       .onConflictDoNothing()
@@ -117,4 +136,47 @@ export async function commitImport(userId: string, req: ImportLinksRequest): Pro
   await db.update(imports).set({ stats }).where(eq(imports.id, record.id));
   log.info("import.committed", { importId: record.id, created, totalLinks: preview.totalLinks });
   return { importId: record.id, stats };
+}
+
+export interface ImportSummary {
+  id: string;
+  createdAt: string;
+  created: number;
+  /** Items from this import still in the inbox. */
+  remaining: number;
+}
+
+export async function listImports(userId: string): Promise<ImportSummary[]> {
+  const rows = await db
+    .select({ id: imports.id, createdAt: imports.createdAt, stats: imports.stats, remaining: count(items.id) })
+    .from(imports)
+    .leftJoin(items, eq(items.importId, imports.id))
+    .where(eq(imports.userId, userId))
+    .groupBy(imports.id)
+    .orderBy(desc(imports.createdAt))
+    .limit(5);
+  return rows
+    .filter((r) => r.remaining > 0)
+    .map((r) => ({ id: r.id, createdAt: r.createdAt.toISOString(), created: r.stats.created, remaining: r.remaining }));
+}
+
+/**
+ * Takes an import back out: removes its items you haven't touched yet —
+ * still unread, not favorited, no note. Anything you've engaged with stays.
+ */
+export async function undoImport(userId: string, importId: string): Promise<number> {
+  const removed = await db
+    .delete(items)
+    .where(
+      and(
+        eq(items.userId, userId),
+        eq(items.importId, importId),
+        eq(items.status, "unread"),
+        eq(items.favorite, false),
+        isNull(items.userNote),
+      ),
+    )
+    .returning({ id: items.id });
+  log.info("import.undone", { importId, removed: removed.length });
+  return removed.length;
 }

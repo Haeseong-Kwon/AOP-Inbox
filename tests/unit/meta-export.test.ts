@@ -1,6 +1,6 @@
 import { zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
-import { extractLinksFromFile, extractLinksFromJson, ImportFileError } from "@/lib/import/meta-export";
+import { extractLinksFromFile, extractLinksFromJson, fixMetaText, ImportFileError } from "@/lib/import/meta-export";
 
 // Shape modelled on Meta's messages export, but the parser must not depend on it.
 const thread = {
@@ -44,5 +44,60 @@ describe("extractLinksFromFile", () => {
   it("rejects unsupported files with a friendly error", async () => {
     await expect(extractLinksFromFile(new File(["x"], "a.png"))).rejects.toBeInstanceOf(ImportFileError);
     await expect(extractLinksFromFile(new File(["not a zip"], "a.zip"))).rejects.toBeInstanceOf(ImportFileError);
+  });
+});
+
+describe("what a full export contributes", () => {
+  // Meta escapes UTF-8 bytes one by one: "안녕" arrives as "ì\u0095\u0088ë\u0085\u0095".
+  const mangled = (text: string) => String.fromCharCode(...new TextEncoder().encode(text));
+  const json = (v: unknown) => strToU8(JSON.stringify(v));
+  const fullExport = () =>
+    zipSync({
+      "your_instagram_activity/saved/saved_posts.json": json({
+        saved_saved_media: [{ title: "chef.kim", string_map_data: { "Saved on": { href: "https://www.instagram.com/reel/SAVED/", timestamp: 1_650_000_000 } } }],
+      }),
+      "your_instagram_activity/messages/inbox/me_1/message_1.json": json({
+        participants: [{ name: "me" }],
+        messages: [
+          { sender_name: "me", timestamp_ms: 1_700_000_000_000, share: { link: "https://www.instagram.com/reel/SELF/", share_text: mangled("파스타 레시피\n재료"), original_content_owner: "cook" } },
+        ],
+      }),
+      "your_instagram_activity/messages/inbox/friend_2/message_1.json": json({
+        participants: [{ name: "friend" }, { name: "me" }],
+        messages: [
+          { sender_name: "friend", timestamp_ms: 1_700_000_000_000, share: { link: "https://www.instagram.com/reel/FRIEND/" } },
+          { sender_name: "me", timestamp_ms: 1_600_000_000_000, share: { link: "https://www.instagram.com/reel/SAVED/" } },
+        ],
+      }),
+      "your_instagram_activity/messages/message_requests/x_3/message_1.json": json({
+        participants: [{ name: "stranger" }, { name: "me" }],
+        messages: [{ share: { link: "https://www.instagram.com/reel/SPAM/" } }],
+      }),
+      "ads_information/ads_and_topics/posts_viewed.json": json({ impressions: [{ href: "https://www.instagram.com/p/VIEWED/" }] }),
+      "ads_information/ads_and_topics/videos_watched.json": json({ impressions: [{ href: "https://www.instagram.com/reel/WATCHED/" }] }),
+      "your_instagram_activity/likes/liked_posts.json": json({ likes_media_likes: [{ href: "https://www.instagram.com/p/LIKED/" }] }),
+    });
+
+  it("reads only Saved and DM threads, and tags where each link came from", async () => {
+    const links = await extractLinksFromFile(new File([fullExport()], "export.zip"));
+    const byUrl = Object.fromEntries(links.map((l) => [l.url, l]));
+    expect(Object.keys(byUrl).sort()).toEqual(
+      ["https://www.instagram.com/reel/FRIEND/", "https://www.instagram.com/reel/SAVED/", "https://www.instagram.com/reel/SELF/"].sort(),
+    );
+    expect(byUrl["https://www.instagram.com/reel/SELF/"]).toMatchObject({ origin: "self", caption: "파스타 레시피\n재료", author: "cook" });
+    expect(byUrl["https://www.instagram.com/reel/FRIEND/"].origin).toBe("dm");
+    // Also shared in a chat, earlier: stays "saved" but keeps the earliest date.
+    expect(byUrl["https://www.instagram.com/reel/SAVED/"]).toMatchObject({ origin: "saved", author: "chef.kim", timestamp: 1_600_000_000_000 });
+  });
+
+  it("a single history file outside Saved/DMs yields nothing", async () => {
+    const viewed = new File([JSON.stringify({ impressions: [{ href: "https://www.instagram.com/p/VIEWED/" }] })], "posts_viewed.json");
+    expect(await extractLinksFromFile(viewed)).toEqual([]);
+  });
+
+  it("repairs Meta's mangled UTF-8 and leaves normal text alone", () => {
+    expect(fixMetaText(mangled("셜커 café"))).toBe("셜커 café");
+    expect(fixMetaText("café")).toBe("café");
+    expect(fixMetaText("셜커")).toBe("셜커");
   });
 });
