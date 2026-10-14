@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto";
-import { and, eq, gt, isNotNull, lt, ne, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, lt, sql } from "drizzle-orm";
 import { instagramInbound, instagramLinks } from "@/db/schema";
 import { db } from "@/lib/db";
 import { HttpError } from "@/lib/errors";
@@ -77,19 +77,44 @@ export async function redeemLinkCode(igsid: string, text: string, username: stri
   return row?.userId ?? null;
 }
 
-/** The user approves the Instagram account shown in the app. Returns the bound IGSID. */
-export async function confirmLink(userId: string): Promise<string> {
-  const row = await db.query.instagramLinks.findFirst({
-    where: and(eq(instagramLinks.userId, userId), isNotNull(instagramLinks.pendingIgsid), gt(instagramLinks.pendingAt, sql`now() - interval '15 minutes'`)),
-  });
-  if (!row?.pendingIgsid) throw new HttpError(409, "That link request expired. Get a new code and send it again.");
-  const taken = await db.query.instagramLinks.findFirst({ where: and(eq(instagramLinks.igsid, row.pendingIgsid), ne(instagramLinks.userId, userId)) });
-  if (taken) throw new HttpError(409, "That Instagram account is already linked to another AOP Inbox account.");
-  await db
-    .update(instagramLinks)
-    .set({ igsid: row.pendingIgsid, igUsername: row.pendingUsername, linkedAt: new Date(), pendingIgsid: null, pendingUsername: null, pendingAt: null })
-    .where(eq(instagramLinks.userId, userId));
-  return row.pendingIgsid;
+/**
+ * The user approves the exact request they were shown (identified by its
+ * `requestedAt`). One conditional UPDATE does the check and the bind, so a
+ * request that changed or expired in between is never approved. Returns the bound IGSID.
+ */
+export async function confirmLink(userId: string, requestedAt: string): Promise<string> {
+  const shown = new Date(requestedAt);
+  if (Number.isNaN(shown.getTime())) throw new HttpError(400, "That link request expired. Get a new code and send it again.");
+  let rows: { igsid: string | null }[];
+  try {
+    rows = await db
+      .update(instagramLinks)
+      .set({
+        igsid: sql`${instagramLinks.pendingIgsid}`,
+        igUsername: sql`${instagramLinks.pendingUsername}`,
+        linkedAt: new Date(),
+        pendingIgsid: null,
+        pendingUsername: null,
+        pendingAt: null,
+      })
+      .where(
+        and(
+          eq(instagramLinks.userId, userId),
+          isNotNull(instagramLinks.pendingIgsid),
+          eq(instagramLinks.pendingAt, shown),
+          gt(instagramLinks.pendingAt, sql`now() - interval '15 minutes'`),
+        ),
+      )
+      .returning({ igsid: instagramLinks.igsid });
+  } catch (error) {
+    // instagram_links_igsid_uq: that Instagram account is bound to someone else.
+    if ((error as { cause?: { code?: string } }).cause?.code === "23505" || (error as { code?: string }).code === "23505") {
+      throw new HttpError(409, "That Instagram account is already linked to another AOP Inbox account.");
+    }
+    throw error;
+  }
+  if (!rows[0]?.igsid) throw new HttpError(409, "That link request expired. Get a new code and send it again.");
+  return rows[0].igsid;
 }
 
 export async function rejectPendingLink(userId: string): Promise<void> {
@@ -112,7 +137,8 @@ export interface InstagramLinkView {
   configured: boolean;
   botUsername: string | null;
   /** A code was DM'd from this account and waits for the user's approval. */
-  pending: { username: string | null } | null;
+  /** `requestedAt` identifies this exact request when approving it. */
+  pending: { username: string | null; requestedAt: string } | null;
   linked: boolean;
   username: string | null;
   linkedAt: string | null;
@@ -127,7 +153,7 @@ export async function linkStatus(userId: string): Promise<InstagramLinkView> {
   return {
     configured: Boolean(config),
     botUsername: config?.botUsername ?? null,
-    pending: pendingFresh ? { username: row.pendingUsername } : null,
+    pending: pendingFresh ? { username: row.pendingUsername, requestedAt: row.pendingAt!.toISOString() } : null,
     linked: Boolean(row?.igsid),
     username: row?.igUsername ?? null,
     linkedAt: row?.igsid ? (row.linkedAt?.toISOString() ?? null) : null,

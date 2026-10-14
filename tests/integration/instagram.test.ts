@@ -40,10 +40,15 @@ const reel = (id: string, title = "Claude Code MCP 5개 세팅법\n댓글에 MCP
 });
 const userItems = () => db.select().from(items).where(eq(items.userId, userId));
 
+/** Approve exactly what Settings shows, as the UI does. */
+async function approve(id: string) {
+  return confirmLink(id, (await linkStatus(id)).pending!.requestedAt);
+}
+
 async function link() {
   const { code } = await createLinkCode(userId);
   await handleMessage(config, dm({ text: `연결 ${code.toLowerCase()}` }));
-  await confirmLink(userId);
+  await approve(userId);
 }
 
 describe("instagram webhook parsing", () => {
@@ -87,17 +92,20 @@ describe("instagram DM capture", () => {
     await handleMessage(config, dm({ text: code }));
     expect(replies.at(-1)).toMatch(/승인/);
     expect(await linkStatus(userId)).toMatchObject({ linked: false, pending: { username: "me_on_ig" } });
+    // Approving a request other than the one shown (changed or replaced since) does nothing.
+    await expect(confirmLink(userId, new Date(0).toISOString())).rejects.toThrow(/expired/);
+    expect((await linkStatus(userId)).linked).toBe(false);
     await handleMessage(config, dm({ attachments: [reel("before-approval")] }));
     expect(await userItems()).toHaveLength(0);
 
-    await confirmLink(userId);
+    await approve(userId);
     expect(await linkStatus(userId)).toMatchObject({ linked: true, username: "me_on_ig", pending: null });
   });
 
   it("someone who grabs your code gets a visible request you can decline — nothing of theirs is saved", async () => {
     const { code } = await createLinkCode(userId);
     await handleMessage(config, dm({ text: code }, "INTRUDER"));
-    expect((await linkStatus(userId)).pending).toEqual({ username: "stranger.account" });
+    expect((await linkStatus(userId)).pending).toMatchObject({ username: "stranger.account" });
     // The code was used up by the intruder; the owner's own attempt doesn't override silently.
     await handleMessage(config, dm({ text: code }));
     expect(replies.at(-1)).toMatch(/코드가 맞지 않아요/);
@@ -114,10 +122,12 @@ describe("instagram DM capture", () => {
     // SENDER is already linked to test-user, so the message is treated as theirs, not as a code.
     await handleMessage(config, dm({ text: code }));
     expect((await linkStatus("other")).pending).toBeNull();
-    await expect(confirmLink("other")).rejects.toThrow(/expired/);
-    // Even if a pending request for an already-linked account existed, approval refuses it.
-    await db.update(instagramLinks).set({ pendingIgsid: SENDER, pendingAt: new Date() }).where(eq(instagramLinks.userId, "other"));
-    await expect(confirmLink("other")).rejects.toThrow(/already linked/);
+    await expect(confirmLink("other", new Date().toISOString())).rejects.toThrow(/expired/);
+    // Even if a pending request for an already-linked account existed, approval refuses it — atomically.
+    const at = new Date();
+    await db.update(instagramLinks).set({ pendingIgsid: SENDER, pendingAt: at }).where(eq(instagramLinks.userId, "other"));
+    await expect(confirmLink("other", at.toISOString())).rejects.toThrow(/already linked/);
+    expect((await linkStatus("other")).linked).toBe(false);
   });
 
   it("links with a one-time code, then saves shared reels by caption without fetching media", async () => {
@@ -156,7 +166,7 @@ describe("instagram DM capture", () => {
     const fresh = await createLinkCode(userId);
     await handleMessage(config, dm({ text: fresh.code }));
     await handleMessage(config, dm({ text: fresh.code }, "INTRUDER"));
-    expect((await linkStatus(userId)).pending).toEqual({ username: "me_on_ig" });
+    expect((await linkStatus(userId)).pending).toMatchObject({ username: "me_on_ig" });
   });
 
   it("stops saving after disconnect", async () => {

@@ -56,7 +56,7 @@ export function InstagramDmSetup() {
   const decide = async (approve: boolean) => {
     setBusy(true);
     try {
-      await apiSend("/api/instagram/link/confirm", approve ? "POST" : "DELETE");
+      await apiSend("/api/instagram/link/confirm", approve ? "POST" : "DELETE", approve ? { requestedAt: data.pending?.requestedAt } : undefined);
       setCode(null);
       await qc.invalidateQueries({ queryKey: KEY });
       if (!approve) toast(t("Request declined. Nothing from that account will be saved."));
