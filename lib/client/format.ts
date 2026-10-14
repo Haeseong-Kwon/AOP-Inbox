@@ -1,6 +1,11 @@
 import type { SourceType } from "@/db/schema";
+import { DEFAULT_LOCALE, translate, type Locale } from "@/lib/i18n";
 
-const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto", style: "short" });
+const formatters = new Map<Locale, Intl.RelativeTimeFormat>();
+function rtf(locale: Locale) {
+  if (!formatters.has(locale)) formatters.set(locale, new Intl.RelativeTimeFormat(locale, { numeric: "auto", style: "short" }));
+  return formatters.get(locale)!;
+}
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["year", 31_536_000],
   ["month", 2_592_000],
@@ -10,17 +15,17 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["minute", 60],
 ];
 
-export function relativeTime(iso: string, now = Date.now()): string {
+export function relativeTime(iso: string, locale: Locale = DEFAULT_LOCALE, now = Date.now()): string {
   const seconds = (new Date(iso).getTime() - now) / 1000;
-  if (Math.abs(seconds) < 60) return "just now";
+  if (Math.abs(seconds) < 60) return translate(locale, "just now");
   for (const [unit, size] of UNITS) {
-    if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
+    if (Math.abs(seconds) >= size) return rtf(locale).format(Math.round(seconds / size), unit);
   }
-  return "just now";
+  return translate(locale, "just now");
 }
 
-export function fullDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en", { year: "numeric", month: "short", day: "numeric" });
+export function fullDate(iso: string, locale: Locale = DEFAULT_LOCALE): string {
+  return new Date(iso).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
 }
 
 export const SOURCE_LABELS: Record<SourceType, string> = {

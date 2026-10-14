@@ -1,5 +1,6 @@
 import { ShieldAlert, ShieldCheck, ShieldHalf } from "lucide-react";
 import type { Risk } from "@aop-inbox/core/browser";
+import { useT } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 
 const META: Record<Risk, { label: string; icon: typeof ShieldCheck; className: string }> = {
@@ -10,15 +11,17 @@ const META: Record<Risk, { label: string; icon: typeof ShieldCheck; className: s
 
 /** Icon + words, never color alone. Only high risk is loud. */
 export function RiskBadge({ risk, className }: { risk: Risk; className?: string }) {
+  const t = useT();
   const m = META[risk];
   return (
     <span className={cn("inline-flex items-center gap-1 text-xs font-medium", m.className, className)}>
       <m.icon className="size-3.5" aria-hidden />
-      {m.label}
+      {t(m.label)}
     </span>
   );
 }
 
+/** English keys: wrap with `t()` at the call site. */
 export const DECISION_LABELS = {
   auto: "Runs automatically",
   approve: "Needs your approval",

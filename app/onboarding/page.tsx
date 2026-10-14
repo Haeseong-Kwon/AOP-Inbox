@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { AuthGate } from "@/lib/auth/gate";
 import { OnboardingFlow } from "./onboarding-flow";
 
-export const metadata: Metadata = { title: "Welcome" };
+export const metadata: Metadata = { title: "환영해요" };
 
 export default function OnboardingPage() {
   return (

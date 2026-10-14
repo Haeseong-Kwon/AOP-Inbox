@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { SetupReview } from "@/components/actions/setup-review";
 
-export const metadata: Metadata = { title: "Review setup" };
+export const metadata: Metadata = { title: "셋업 검토" };
 
 async function Content({ params }: { params: PageProps<"/items/[id]/setup">["params"] }) {
   const { id } = await params;

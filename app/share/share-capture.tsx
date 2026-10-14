@@ -6,11 +6,13 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { apiSend } from "@/lib/client/api";
+import { useT } from "@/lib/i18n/client";
 import type { CaptureResponse } from "@/lib/items/types";
 
 type State = { kind: "confirm" } | { kind: "saving" } | { kind: "saved"; res: CaptureResponse } | { kind: "error"; message: string };
 
 export function ShareCapture({ autoSave }: { autoSave: boolean }) {
+  const t = useT();
   const params = useSearchParams();
   const [state, setState] = useState<State>(autoSave ? { kind: "saving" } : { kind: "confirm" });
   const started = useRef(false);
@@ -36,10 +38,10 @@ export function ShareCapture({ autoSave }: { autoSave: boolean }) {
   if (!input || state.kind === "error") {
     return (
       <div className="flex max-w-sm flex-col items-center gap-4 text-center">
-        <p className="text-[17px] font-medium">{input ? "Couldn't save this." : "Nothing to save."}</p>
-        <p className="text-sm text-muted-foreground">{state.kind === "error" ? state.message : "The share didn't include a link or text."}</p>
+        <p className="text-[17px] font-medium">{input ? t("Couldn't save this.") : t("Nothing to save.")}</p>
+        <p className="text-sm text-muted-foreground">{state.kind === "error" ? state.message : t("The share didn't include a link or text.")}</p>
         <Button asChild variant="outline">
-          <Link href="/">Open AOP Inbox</Link>
+          <Link href="/">{t("Open AOP Inbox")}</Link>
         </Button>
       </div>
     );
@@ -47,7 +49,7 @@ export function ShareCapture({ autoSave }: { autoSave: boolean }) {
   if (state.kind === "confirm") {
     return (
       <div className="flex max-w-sm flex-col items-center gap-4 text-center">
-        <p className="text-[17px] font-medium">Save this to your inbox?</p>
+        <p className="text-[17px] font-medium">{t("Save this to your inbox?")}</p>
         <p className="line-clamp-3 font-mono text-xs break-all text-muted-foreground">{input}</p>
         <div className="flex gap-2">
           <Button
@@ -56,10 +58,10 @@ export function ShareCapture({ autoSave }: { autoSave: boolean }) {
               save();
             }}
           >
-            Save
+            {t("Save")}
           </Button>
           <Button asChild variant="ghost">
-            <Link href="/">Cancel</Link>
+            <Link href="/">{t("Cancel")}</Link>
           </Button>
         </div>
       </div>
@@ -68,7 +70,7 @@ export function ShareCapture({ autoSave }: { autoSave: boolean }) {
   if (state.kind === "saving") {
     return (
       <p className="inline-flex items-center gap-3 text-[17px]" role="status">
-        <Loader2 className="size-5 animate-spin text-signal" aria-hidden /> Saving…
+        <Loader2 className="size-5 animate-spin text-signal" aria-hidden /> {t("Saving…")}
       </p>
     );
   }
@@ -79,15 +81,15 @@ export function ShareCapture({ autoSave }: { autoSave: boolean }) {
         <Check className="size-7 text-signal" aria-hidden />
       </span>
       <div>
-        <p className="text-[22px] font-semibold tracking-[-0.015em]">{duplicate ? "Already in your Inbox" : "Saved"}</p>
+        <p className="text-[22px] font-semibold tracking-[-0.015em]">{duplicate ? t("Already in your Inbox") : t("Saved")}</p>
         <p className="mt-1.5 line-clamp-2 text-[15px] text-muted-foreground">{item.title}</p>
       </div>
       <div className="flex gap-2">
         <Button asChild>
-          <Link href={`/inbox?item=${item.id}`}>Open</Link>
+          <Link href={`/inbox?item=${item.id}`}>{t("Open")}</Link>
         </Button>
         <Button asChild variant="ghost">
-          <Link href="/">Done</Link>
+          <Link href="/">{t("Done")}</Link>
         </Button>
       </div>
     </div>

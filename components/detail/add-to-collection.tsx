@@ -8,6 +8,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { apiSend } from "@/lib/client/api";
 import { keys, useCollections } from "@/lib/client/queries";
+import { useT } from "@/lib/i18n/client";
 import type { ItemDetail } from "@/lib/items/types";
 
 /** Manual collections only — AI placements are managed by the analyzer. */
@@ -16,6 +17,7 @@ export function AddToCollection({ item }: { item: ItemDetail }) {
   const [query, setQuery] = useState("");
   const { data: collections = [] } = useCollections();
   const qc = useQueryClient();
+  const t = useT();
   const manual = collections.filter((c) => c.kind === "manual");
   const memberOf = new Set(item.collections.map((c) => c.id));
 
@@ -41,7 +43,7 @@ export function AddToCollection({ item }: { item: ItemDetail }) {
       await apiSend(`/api/collections/${id}/items`, "POST", { itemId: item.id, member: true });
       setQuery("");
       refresh();
-      toast.success(`Added to ${name}`);
+      toast.success(t("Added to {name}", { name }));
     } catch (error) {
       toast.error((error as Error).message);
     }
@@ -54,24 +56,24 @@ export function AddToCollection({ item }: { item: ItemDetail }) {
           type="button"
           className="inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
         >
-          <Plus className="size-3" aria-hidden /> Add to collection
+          <Plus className="size-3" aria-hidden /> {t("Add to collection")}
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-64 p-0" align="start">
         <Command>
-          <CommandInput placeholder="Find or create…" value={query} onValueChange={setQuery} />
+          <CommandInput placeholder={t("Find or create…")} value={query} onValueChange={setQuery} />
           <CommandList>
             <CommandEmpty className="py-2">
               {query.trim() ? (
                 <button type="button" onClick={create} className="w-full px-3 py-1.5 text-left text-sm hover:bg-accent">
-                  Create “{query.trim()}”
+                  {t("Create “{name}”", { name: query.trim() })}
                 </button>
               ) : (
-                <span className="block px-3 py-1.5 text-sm text-muted-foreground">Type a name to create a collection.</span>
+                <span className="block px-3 py-1.5 text-sm text-muted-foreground">{t("Type a name to create a collection.")}</span>
               )}
             </CommandEmpty>
             {manual.length > 0 && (
-              <CommandGroup heading="Your collections">
+              <CommandGroup heading={t("Your collections")}>
                 {manual.map((c) => (
                   <CommandItem key={c.id} value={c.name} onSelect={() => toggle(c.id)}>
                     <Check className={memberOf.has(c.id) ? "opacity-100" : "opacity-0"} aria-hidden />
@@ -82,7 +84,7 @@ export function AddToCollection({ item }: { item: ItemDetail }) {
             )}
             {query.trim() && manual.some((c) => c.name.toLowerCase().includes(query.toLowerCase())) && (
               <CommandItem value={`create ${query}`} onSelect={create}>
-                <Plus aria-hidden /> Create “{query.trim()}”
+                <Plus aria-hidden /> {t("Create “{name}”", { name: query.trim() })}
               </CommandItem>
             )}
           </CommandList>

@@ -4,7 +4,7 @@ import { SettingsView } from "@/components/settings/settings-view";
 import { getAIConfig } from "@/lib/ai/config";
 import { requirePageUser } from "@/lib/auth/session";
 
-export const metadata: Metadata = { title: "Settings" };
+export const metadata: Metadata = { title: "설정" };
 
 async function SettingsContent() {
   const user = await requirePageUser();

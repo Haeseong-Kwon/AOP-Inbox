@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { AuthGate } from "@/lib/auth/gate";
 import { ShareCapture } from "./share-capture";
 
-export const metadata: Metadata = { title: "Saving…" };
+export const metadata: Metadata = { title: "저장 중…" };
 
 /**
  * PWA Web Share Target (GET). The OS share sheet navigates here with

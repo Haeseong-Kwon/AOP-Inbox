@@ -6,6 +6,7 @@ import { UIProvider } from "@/components/app/ui-store";
 import { CaptureDialog } from "@/components/capture/capture-dialog";
 import { CommandPalette } from "@/components/command/command-palette";
 import { AuthGate } from "@/lib/auth/gate";
+import { T } from "@/lib/i18n/client";
 
 function PageFallback() {
   return (
@@ -23,7 +24,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         href="#main"
         className="sr-only z-50 rounded-md bg-background px-3 py-2 text-sm focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:border"
       >
-        Skip to content
+        <T>Skip to content</T>
       </a>
       <div className="flex min-h-dvh">
         <Sidebar />

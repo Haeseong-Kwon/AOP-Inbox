@@ -10,17 +10,19 @@ import { InboxEmpty } from "@/components/inbox/empty-state";
 import { ActionHint, ItemCard, ItemListSkeleton, ProcessingLine } from "@/components/inbox/item-views";
 import { SourceIcon } from "@/components/inbox/source-icon";
 import { greeting, relativeTime } from "@/lib/client/format";
+import { useLocale, useT } from "@/lib/i18n/client";
 import { useClientValue } from "@/lib/client/use-client-value";
 import { useHome, useQueueNudge, type HomeData } from "@/lib/client/queries";
 import type { ItemSummary } from "@/lib/items/types";
 
 function SectionHeader({ title, href, linkLabel }: { title: string; href?: string; linkLabel?: string }) {
+  const t = useT();
   return (
     <div className="flex items-baseline justify-between px-1 pb-2">
-      <h2 className="text-[13.5px] font-medium text-muted-foreground">{title}</h2>
+      <h2 className="text-[13.5px] font-medium text-muted-foreground">{t(title)}</h2>
       {href && (
         <Link href={href} className="text-[13px] text-muted-foreground transition-colors hover:text-foreground">
-          {linkLabel ?? "View all"}
+          {t(linkLabel ?? "View all")}
         </Link>
       )}
     </div>
@@ -42,15 +44,15 @@ function CompactLink({ item, meta }: { item: ItemSummary; meta?: ReactNode }) {
   );
 }
 
-function statusSentence(data: HomeData): string {
+function statusSentence(data: HomeData, t: ReturnType<typeof useT>): string {
   const { savedToday, unread, processing, total } = data.stats;
-  if (total === 0) return "Nothing saved yet. Paste your first link below.";
+  if (total === 0) return t("Nothing saved yet. Paste your first link below.");
   const parts = [
-    savedToday > 0 ? `You saved ${savedToday} ${savedToday === 1 ? "thing" : "things"} today.` : `${total} items in your inbox.`,
-    unread > 0 ? `${unread} still unread.` : "Everything's been read.",
+    savedToday > 0 ? t(savedToday === 1 ? "You saved {n} thing today." : "You saved {n} things today.", { n: savedToday }) : t("{n} items in your inbox.", { n: total }),
+    unread > 0 ? t("{n} still unread.", { n: unread }) : t("Everything's been read."),
   ];
-  if (data.stats.appliedThisWeek > 0) parts.push(`${data.stats.appliedThisWeek} applied this week.`);
-  if (processing > 0) parts.push(`${processing} being understood right now.`);
+  if (data.stats.appliedThisWeek > 0) parts.push(t("{n} applied this week.", { n: data.stats.appliedThisWeek }));
+  if (processing > 0) parts.push(t("{n} being understood right now.", { n: processing }));
   return parts.join(" ");
 }
 
@@ -58,17 +60,19 @@ export function HomeView() {
   const { data, isLoading, isError, error, refetch } = useHome();
   const router = useRouter();
   const hello = useClientValue(greeting, "Hello.");
+  const t = useT();
+  const locale = useLocale();
   useQueueNudge(Boolean(data?.stats.processing));
 
   return (
     <div className="mx-auto w-full max-w-[1120px] px-4 pt-8 pb-28 sm:px-8 md:pt-14 md:pb-16">
       <header className="flex flex-col gap-2 pb-8">
-        <p className="text-[15px] text-muted-foreground">{hello}</p>
+        <p className="text-[15px] text-muted-foreground">{t(hello)}</p>
         <h1 className="text-[28px] leading-[1.15] font-semibold tracking-[-0.025em] text-balance sm:text-[34px]">
-          Your knowledge, organized automatically.
+          {t("Your knowledge, organized automatically.")}
         </h1>
         <p className="min-h-6 text-[15px] text-muted-foreground" aria-live="polite">
-          {data ? statusSentence(data) : " "}
+          {data ? statusSentence(data, t) : " "}
         </p>
       </header>
 
@@ -82,7 +86,7 @@ export function HomeView() {
         <p className="text-sm text-muted-foreground">
           {error.message}{" "}
           <button type="button" className="text-signal hover:underline" onClick={() => refetch()}>
-            Try again
+            {t("Try again")}
           </button>
         </p>
       ) : data!.stats.total === 0 ? (
@@ -91,8 +95,8 @@ export function HomeView() {
         <div className="grid gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="flex min-w-0 flex-col gap-10">
             {(data!.notifications.length > 0 || data!.waitingForYou.length > 0) && (
-              <section aria-label="Waiting for you" className="rounded-xl border">
-                <h2 className="border-b px-4 py-2.5 text-[13.5px] font-medium">Waiting for you</h2>
+              <section aria-label={t("Waiting for you")} className="rounded-xl border">
+                <h2 className="border-b px-4 py-2.5 text-[13.5px] font-medium">{t("Waiting for you")}</h2>
                 {data!.notifications.length > 0 && <NotificationList notifications={data!.notifications} />}
                 {data!.waitingForYou
                   .filter((i) => !data!.notifications.some((n) => n.itemId === i.id))
@@ -100,12 +104,12 @@ export function HomeView() {
                     <Link key={item.id} href={`/items/${item.id}/setup`} className="flex items-center gap-3 border-t px-4 py-3 text-[14px] first:border-t-0 hover:bg-accent/60">
                       <Zap className="size-3.5 shrink-0 text-signal" aria-hidden />
                       <span className="min-w-0 flex-1 truncate">{item.title}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{item.actionState === "needs_approval" ? "Review required" : "Your step"}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{t(item.actionState === "needs_approval" ? "Review required" : "Your step")}</span>
                     </Link>
                   ))}
               </section>
             )}
-            <section aria-label="Recently saved">
+            <section aria-label={t("Recently saved")}>
               <SectionHeader title="Recently saved" href="/inbox" />
               <div className="-mx-4 sm:-mx-5">
                 {data!.recent.map((item) => (
@@ -114,7 +118,7 @@ export function HomeView() {
               </div>
             </section>
             {data!.continueReading.length > 0 && (
-              <section aria-label="Continue where you left off">
+              <section aria-label={t("Continue where you left off")}>
                 <SectionHeader title="Continue where you left off" href="/inbox?sort=viewed" />
                 <div className="flex flex-col">
                   {data!.continueReading.map((item) => (
@@ -131,12 +135,12 @@ export function HomeView() {
               className="flex h-10 items-center gap-2.5 rounded-lg border bg-surface px-3 text-sm text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground"
             >
               <Search className="size-4" aria-hidden />
-              <span className="flex-1">Search by meaning…</span>
+              <span className="flex-1">{t("Search by meaning…")}</span>
               <kbd className="font-mono text-[11px]">/</kbd>
             </Link>
 
             {data!.readyToApply.length > 0 && (
-              <section aria-label="Ready to apply">
+              <section aria-label={t("Ready to apply")}>
                 <SectionHeader title="Ready to apply" href="/inbox?state=ready" />
                 <div className="-mx-2 flex flex-col">
                   {data!.readyToApply.map((item) => (
@@ -147,18 +151,18 @@ export function HomeView() {
             )}
 
             {data!.recentlyApplied.length > 0 && (
-              <section aria-label="Recently applied">
+              <section aria-label={t("Recently applied")}>
                 <SectionHeader title="Recently applied" href="/activity" linkLabel="Activity" />
                 <div className="-mx-2 flex flex-col">
                   {data!.recentlyApplied.map((item) => (
-                    <CompactLink key={item.id} item={item} meta={item.appliedAt ? `Applied ${relativeTime(item.appliedAt)}` : undefined} />
+                    <CompactLink key={item.id} item={item} meta={item.appliedAt ? t("Applied {time}", { time: relativeTime(item.appliedAt, locale) }) : undefined} />
                   ))}
                 </div>
               </section>
             )}
 
             {data!.highValue.length > 0 && (
-              <section aria-label="Worth your time">
+              <section aria-label={t("Worth your time")}>
                 <SectionHeader title="Worth your time" href="/inbox?state=high-value" />
                 <div className="-mx-2 flex flex-col">
                   {data!.highValue.map((item) => (
@@ -169,14 +173,14 @@ export function HomeView() {
             )}
 
             {data!.unread.length > 0 && (
-              <section aria-label="Unread">
+              <section aria-label={t("Unread")}>
                 <SectionHeader title="Unread" href="/inbox?state=unread" />
                 <div className="-mx-2 flex flex-col">
                   {data!.unread.map((item) => (
                     <CompactLink
                       key={item.id}
                       item={item}
-                      meta={item.processingStatus === "completed" ? `Saved ${relativeTime(item.savedAt)}` : <ProcessingLine item={item} />}
+                      meta={item.processingStatus === "completed" ? t("Saved {time}", { time: relativeTime(item.savedAt, locale) }) : <ProcessingLine item={item} />}
                     />
                   ))}
                 </div>
@@ -184,7 +188,7 @@ export function HomeView() {
             )}
 
             {data!.collections.length > 0 && (
-              <section aria-label="Collections">
+              <section aria-label={t("Collections")}>
                 <SectionHeader title="Collections" href="/collections" />
                 <ul className="-mx-2 flex flex-col">
                   {data!.collections.map((c) => (

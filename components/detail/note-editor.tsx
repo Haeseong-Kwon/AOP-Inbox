@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useUpdateItem } from "@/lib/client/queries";
+import { useT } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 
 export const EDIT_NOTE_EVENT = "aop:edit-note";
@@ -17,6 +18,7 @@ export function NoteEditor({ itemId, initial }: NoteEditorProps) {
   const [savedValue, setSavedValue] = useState(initial ?? "");
   const ref = useRef<HTMLTextAreaElement>(null);
   const update = useUpdateItem();
+  const t = useT();
   const dirty = value.trim() !== savedValue.trim();
 
   useEffect(() => {
@@ -44,7 +46,7 @@ export function NoteEditor({ itemId, initial }: NoteEditorProps) {
   return (
     <div>
       <label htmlFor={`note-${itemId}`} className="sr-only">
-        My note
+        {t("My note")}
       </label>
       <textarea
         id={`note-${itemId}`}
@@ -62,14 +64,14 @@ export function NoteEditor({ itemId, initial }: NoteEditorProps) {
             ref.current?.blur();
           }
         }}
-        placeholder="Why did you save this? Where will you use it?"
+        placeholder={t("Why did you save this? Where will you use it?")}
         className={cn(
           "w-full resize-none rounded-lg border bg-surface px-3.5 py-3 text-[14.5px] leading-relaxed transition-colors outline-none",
           "placeholder:text-muted-foreground/70 focus:border-signal/50 focus:bg-background focus-visible:outline-none",
         )}
       />
       <p className="mt-1.5 h-4 text-xs text-muted-foreground" aria-live="polite">
-        {update.isPending ? "Saving…" : dirty ? "⌘↵ to save" : savedValue && update.isSuccess ? "Saved. Your note now shapes search and Ask." : ""}
+        {update.isPending ? t("Saving…") : dirty ? t("⌘↵ to save") : savedValue && update.isSuccess ? t("Saved. Your note now shapes search and Ask.") : ""}
       </p>
     </div>
   );

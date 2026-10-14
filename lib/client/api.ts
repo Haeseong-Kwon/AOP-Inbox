@@ -1,8 +1,10 @@
-/** Browser-side fetch helpers. Server errors arrive as {error: friendly message}. */
+/** Browser-side fetch helpers. Server errors arrive as {error: friendly message} in English and are shown translated. */
+import { translate } from "@/lib/i18n";
+import { currentLocale } from "@/lib/i18n/client";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
-    super(message);
+    super(translate(currentLocale(), message));
   }
 }
 

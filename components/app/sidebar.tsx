@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
 import { SourceIcon } from "@/components/inbox/source-icon";
+import { T, useT } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { PRIMARY_NAV, SMART_VIEWS, SOURCE_NAV } from "./nav-config";
 import { NotificationBell } from "./notification-bell";
@@ -34,33 +35,34 @@ function GroupLabel({ children }: { children: ReactNode }) {
 
 function SidebarLinks() {
   const pathname = usePathname();
+  const t = useT();
   const params = useSearchParams();
   const onInbox = pathname === "/inbox";
   return (
     <>
-      <nav aria-label="Main" className="flex flex-col gap-0.5">
+      <nav aria-label={t("Main")} className="flex flex-col gap-0.5">
         {PRIMARY_NAV.map(({ href, label, icon: Icon, match }) => (
           <NavLink key={href} href={href} active={match(pathname) && !(href === "/inbox" && (params.get("source") || params.get("state")))}>
             <Icon aria-hidden />
-            {label}
+            {t(label)}
           </NavLink>
         ))}
       </nav>
-      <GroupLabel>Sources</GroupLabel>
-      <nav aria-label="Sources" className="flex flex-col gap-0.5">
+      <GroupLabel>{t("Sources")}</GroupLabel>
+      <nav aria-label={t("Sources")} className="flex flex-col gap-0.5">
         {SOURCE_NAV.map(({ source, label }) => (
           <NavLink key={source} href={`/inbox?source=${source}`} active={onInbox && params.get("source") === source}>
             <SourceIcon type={source} />
-            {label}
+            {t(label)}
           </NavLink>
         ))}
       </nav>
-      <GroupLabel>Smart views</GroupLabel>
-      <nav aria-label="Smart views" className="flex flex-col gap-0.5">
+      <GroupLabel>{t("Smart views")}</GroupLabel>
+      <nav aria-label={t("Smart views")} className="flex flex-col gap-0.5">
         {SMART_VIEWS.map(({ state, label, icon: Icon }) => (
           <NavLink key={state} href={`/inbox?state=${state}`} active={onInbox && params.get("state") === state}>
             <Icon aria-hidden />
-            {label}
+            {t(label)}
           </NavLink>
         ))}
       </nav>
@@ -74,12 +76,13 @@ function SettingsLink() {
   return (
     <NavLink href="/settings" active={pathname.startsWith("/settings")}>
       <Settings aria-hidden />
-      Settings
+      <T>Settings</T>
     </NavLink>
   );
 }
 
 export function Sidebar() {
+  const t = useT();
   const { openCapture } = useUI();
   return (
     <aside className="sticky top-0 hidden h-dvh w-[236px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-3 md:flex">
@@ -96,7 +99,7 @@ export function Sidebar() {
         className="mb-4 flex h-9 items-center gap-2 rounded-lg border bg-raised px-2.5 text-[13.5px] text-foreground/90 shadow-xs transition-colors hover:border-signal/40 hover:text-foreground"
       >
         <Plus className="size-4 text-signal" aria-hidden />
-        <span className="flex-1 text-left">Capture</span>
+        <span className="flex-1 text-left">{t("Capture")}</span>
         <kbd className="rounded border px-1.5 font-mono text-[10.5px] text-muted-foreground">C</kbd>
       </button>
       <div className="scrollbar-none -mx-1 flex-1 overflow-y-auto px-1">

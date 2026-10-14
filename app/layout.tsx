@@ -9,7 +9,7 @@ const newsreader = Newsreader({ variable: "--font-newsreader", subsets: ["latin"
 
 export const metadata: Metadata = {
   title: { default: "AOP Inbox", template: "%s — AOP Inbox" },
-  description: "Capture once. Understand automatically. Find anything later.",
+  description: "한 번 저장하면 알아서 이해하고, 언제든 다시 찾을 수 있어요.",
   applicationName: "AOP Inbox",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "AOP Inbox", statusBarStyle: "black-translucent" },
@@ -27,7 +27,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} antialiased`}>
+    <html lang="ko" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} antialiased`}>
       <body className="min-h-dvh">
         <Providers>{children}</Providers>
       </body>

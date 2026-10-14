@@ -3,6 +3,7 @@ import { z } from "zod";
 import { bearerCaptureToken, consumeCaptureToken } from "@/lib/capture-tokens";
 import { readBodyText } from "@/lib/body";
 import { HttpError } from "@/lib/errors";
+import { localeFromCookieHeader, translate } from "@/lib/i18n";
 import { drainQueue } from "@/lib/ingestion/pipeline";
 import { captureItem } from "@/lib/items/capture";
 import { getSummaries } from "@/lib/items/repository";
@@ -39,7 +40,11 @@ async function capture(req: Request, userId: string): Promise<Response> {
   if (!duplicate) after(() => drainQueue(25_000));
   const [item] = await getSummaries(userId, [itemId]);
   const title = item.title.length > 60 ? `${item.title.slice(0, 57)}…` : item.title;
-  const message = duplicate ? `Already in your Inbox — ${title}` : item.sourceType === "note" ? "Note saved to AOP Inbox" : "Saved to AOP Inbox";
+  // Cookie-less Shortcut calls get the default locale (Korean).
+  const locale = localeFromCookieHeader(req.headers.get("cookie"));
+  const message = duplicate
+    ? translate(locale, "Already in your Inbox — {title}", { title })
+    : translate(locale, item.sourceType === "note" ? "Note saved to AOP Inbox" : "Saved to AOP Inbox");
   return NextResponse.json({ item, duplicate, message } satisfies CaptureResponse, { status: duplicate ? 200 : 201 });
 }
 
@@ -50,8 +55,9 @@ async function withCaptureToken(req: Request, token: string, handler: (userId: s
     return await handler(userId);
   } catch (error) {
     const status = error instanceof HttpError ? error.status : error instanceof z.ZodError ? 400 : 500;
-    const message =
+    const english =
       error instanceof HttpError ? error.message : error instanceof z.ZodError ? (error.issues[0]?.message ?? "Invalid request") : "AOP Inbox couldn't save this. Try again.";
+    const message = translate(localeFromCookieHeader(req.headers.get("cookie")), english);
     if (status === 500) log.error("capture.token_failed", { error: errorMessage(error) });
     return NextResponse.json({ error: message, message }, { status });
   }
@@ -68,5 +74,5 @@ export async function POST(req: Request, ctx: unknown) {
 export async function GET(req: Request) {
   const token = bearerCaptureToken(req);
   if (!token) return NextResponse.json({ error: "Send a capture token: Authorization: Bearer aopc_…" }, { status: 401 });
-  return withCaptureToken(req, token, async () => NextResponse.json({ ok: true, message: "Connected to AOP Inbox" }));
+  return withCaptureToken(req, token, async () => NextResponse.json({ ok: true, message: translate(localeFromCookieHeader(req.headers.get("cookie")), "Connected to AOP Inbox") }));
 }

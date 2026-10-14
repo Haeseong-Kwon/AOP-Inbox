@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
+import { useT } from "@/lib/i18n/client";
 
 /**
  * Tiny, safe Markdown subset for LLM answers: paragraphs, bullets, numbered
@@ -8,7 +9,7 @@ import { Fragment, type ReactNode } from "react";
  * nodes only — no HTML injection.
  */
 
-function inline(text: string, onCite: (ref: string) => void, key: string): ReactNode[] {
+function inline(text: string, onCite: (ref: string) => void, key: string, t: ReturnType<typeof useT>): ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*|_[^_\s][^_]*_|`[^`]+`|\[E?\d{1,2}\])/g);
   return parts.map((part, i) => {
     const k = `${key}-${i}`;
@@ -24,7 +25,7 @@ function inline(text: string, onCite: (ref: string) => void, key: string): React
           key={k}
           type="button"
           onClick={() => onCite(n)}
-          aria-label={execution ? `Setup record ${n}` : `Source ${n}`}
+          aria-label={t(execution ? "Setup record {n}" : "Source {n}", { n })}
           className={
             execution
               ? "mx-0.5 inline-flex h-[18px] min-w-[18px] -translate-y-px items-center justify-center rounded border border-signal/50 px-1 align-middle font-sans text-[11px] font-medium text-signal tabular-nums hover:bg-signal hover:text-primary-foreground"
@@ -40,6 +41,7 @@ function inline(text: string, onCite: (ref: string) => void, key: string): React
 }
 
 export function AnswerText({ text, onCite }: { text: string; onCite: (ref: string) => void }) {
+  const t = useT();
   const blocks: ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   const flush = () => {
@@ -50,7 +52,7 @@ export function AnswerText({ text, onCite }: { text: string; onCite: (ref: strin
         {list.items.map((it, i) => (
           <li key={i} className={list!.ordered ? "pl-1" : "flex gap-3"}>
             {!list!.ordered && <span className="mt-[0.7em] size-1 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden />}
-            <span>{inline(it, onCite, `li${blocks.length}-${i}`)}</span>
+            <span>{inline(it, onCite, `li${blocks.length}-${i}`, t)}</span>
           </li>
         ))}
       </Tag>,
@@ -72,8 +74,8 @@ export function AnswerText({ text, onCite }: { text: string; onCite: (ref: strin
     flush();
     if (!line.trim()) return;
     const heading = line.match(/^#{1,4}\s+(.*)$/);
-    if (heading) blocks.push(<h3 key={i} className="pt-2 text-[15px] font-semibold">{inline(heading[1], onCite, `h${i}`)}</h3>);
-    else blocks.push(<p key={i}>{inline(line, onCite, `p${i}`)}</p>);
+    if (heading) blocks.push(<h3 key={i} className="pt-2 text-[15px] font-semibold">{inline(heading[1], onCite, `h${i}`, t)}</h3>);
+    else blocks.push(<p key={i}>{inline(line, onCite, `p${i}`, t)}</p>);
   });
   flush();
   return <div className="flex flex-col gap-3 text-[15.5px] leading-[1.7]">{blocks}</div>;

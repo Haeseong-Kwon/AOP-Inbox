@@ -7,6 +7,7 @@ import type { CollectionNode } from "@/lib/collections/repository";
 import type { HomeStats } from "@/lib/items/repository";
 import type { CaptureRequest, CaptureResponse, ItemDetail, ItemPage, ItemSummary, ListQuery, UpdateItemRequest } from "@/lib/items/types";
 import type { ActivityEntry, DeviceView, JobView, NotificationView, SetupView } from "@/lib/execution/types";
+import { useT } from "@/lib/i18n/client";
 import { apiGet, apiSend, qs } from "./api";
 
 export type ListFilters = Partial<Omit<ListQuery, "cursor" | "limit">>;
@@ -212,10 +213,11 @@ export function useJobAction(itemId?: string | null) {
 
 export function useCheckActions(itemId: string) {
   const qc = useQueryClient();
+  const t = useT();
   return useMutation({
     mutationFn: () => apiSend<{ ok: true }>(`/api/items/${itemId}/actions/analyze`, "POST"),
     onSuccess: () => {
-      toast("Looking for actions…");
+      toast(t("Looking for actions…"));
       invalidateActionViews(qc, itemId);
     },
     onError: (e) => toast.error(e.message),
@@ -224,11 +226,12 @@ export function useCheckActions(itemId: string) {
 
 export function useFeedback(itemId: string) {
   const qc = useQueryClient();
+  const t = useT();
   return useMutation({
     mutationFn: (body: { kind: "used" | "useful" | "not_using" | "rolled_back" | "remind_later" | "applied"; jobId?: string }) =>
       apiSend<{ ok: true }>(`/api/items/${itemId}/feedback`, "POST", body),
     onSuccess: (_d, v) => {
-      toast(v.kind === "remind_later" ? "We'll remind you in two days" : v.kind === "applied" ? "Marked as applied" : "Thanks — noted");
+      toast(t(v.kind === "remind_later" ? "We'll remind you in two days" : v.kind === "applied" ? "Marked as applied" : "Thanks — noted"));
       invalidateActionViews(qc, itemId);
     },
     onError: (e) => toast.error(e.message),

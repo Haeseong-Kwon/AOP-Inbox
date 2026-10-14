@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/",
     name: "AOP Inbox",
     short_name: "AOP Inbox",
-    description: "Capture once. Understand automatically. Find anything later.",
+    description: "한 번 저장하면 알아서 이해하고, 언제든 다시 찾을 수 있어요.",
     start_url: "/",
     scope: "/",
     display: "standalone",
@@ -21,9 +21,9 @@ export default function manifest(): MetadataRoute.Manifest {
     // Web Share Target: Instagram → Share → AOP Inbox (Android / desktop Chrome).
     share_target: { action: "/share", method: "GET", params: { title: "title", text: "text", url: "url" } },
     shortcuts: [
-      { name: "Capture", url: "/?capture=1" },
-      { name: "Search", url: "/search" },
-      { name: "Ask Inbox", url: "/ask" },
+      { name: "저장", url: "/?capture=1" },
+      { name: "검색", url: "/search" },
+      { name: "인박스에 묻기", url: "/ask" },
     ],
   };
 }

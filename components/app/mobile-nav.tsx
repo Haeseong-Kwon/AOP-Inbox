@@ -3,6 +3,7 @@
 import { Home, Inbox, MessageSquareText, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useT } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { useUI } from "./ui-store";
 
@@ -15,10 +16,11 @@ const ITEMS = [
 ] as const;
 
 export function MobileNav() {
+  const t = useT();
   const pathname = usePathname();
   const { openCapture } = useUI();
   return (
-    <nav aria-label="Main" className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t bg-background/92 backdrop-blur-md md:hidden">
+    <nav aria-label={t("Main")} className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t bg-background/92 backdrop-blur-md md:hidden">
       <ul className="mx-auto grid h-14 max-w-md grid-cols-5 items-center">
         {ITEMS.map((item) =>
           item === null ? (
@@ -26,7 +28,7 @@ export function MobileNav() {
               <button
                 type="button"
                 onClick={() => openCapture()}
-                aria-label="Capture"
+                aria-label={t("Capture")}
                 className="flex size-11 items-center justify-center rounded-full bg-foreground text-background shadow-sm transition-transform active:scale-95"
               >
                 <Plus className="size-5" aria-hidden />
@@ -43,7 +45,7 @@ export function MobileNav() {
                 )}
               >
                 <item.icon className="size-5" aria-hidden />
-                {item.label}
+                {t(item.label)}
               </Link>
             </li>
           ),

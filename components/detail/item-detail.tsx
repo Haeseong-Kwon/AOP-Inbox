@@ -13,6 +13,7 @@ import { SourceIcon } from "@/components/inbox/source-icon";
 import { fullDate, kindLabel, relativeTime } from "@/lib/client/format";
 import { keys, useCheckActions, useDeleteItem, useItem, useRelated, useReprocess, useUpdateItem } from "@/lib/client/queries";
 import { slugify } from "@/lib/ai/schemas";
+import { useLocale, useT } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { ActionPanel } from "@/components/actions/action-panel";
 import { AddToCollection } from "./add-to-collection";
@@ -59,6 +60,8 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
   const checkActions = useCheckActions(id);
   const qc = useQueryClient();
   const viewedRef = useRef<string | null>(null);
+  const t = useT();
+  const locale = useLocale();
 
   // Opening an item marks it viewed (and read) once per open.
   useEffect(() => {
@@ -71,10 +74,10 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
   if (isError || !item) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-        <p className="text-sm text-muted-foreground">{error?.message ?? "This item doesn't exist anymore."}</p>
+        <p className="text-sm text-muted-foreground">{error?.message ?? t("This item doesn't exist anymore.")}</p>
         {onClose && (
           <Button variant="outline" size="sm" onClick={onClose}>
-            Close
+            {t("Close")}
           </Button>
         )}
       </div>
@@ -85,28 +88,28 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
   const copyLink = async () => {
     if (!item.sourceUrl) return;
     await navigator.clipboard.writeText(item.sourceUrl);
-    toast.success("Link copied");
+    toast.success(t("Link copied"));
   };
 
   return (
     <article className="flex h-full flex-col" aria-labelledby="detail-title">
       <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-1 border-b bg-background/90 px-3 backdrop-blur sm:px-4">
         {onClose && (
-          <IconAction label="Close" shortcut="Esc" onClick={onClose}>
+          <IconAction label={t("Close")} shortcut="Esc" onClick={onClose}>
             <X />
           </IconAction>
         )}
         <div className="flex-1" />
-        <IconAction label={item.favorite ? "Remove favorite" : "Favorite"} shortcut="F" active={item.favorite} onClick={() => update.mutate({ id, patch: { favorite: !item.favorite } })}>
+        <IconAction label={t(item.favorite ? "Remove favorite" : "Favorite")} shortcut="F" active={item.favorite} onClick={() => update.mutate({ id, patch: { favorite: !item.favorite } })}>
           <Star className={cn(item.favorite && "fill-current")} />
         </IconAction>
         <IconAction
-          label={archived ? "Move to Inbox" : "Archive"}
+          label={t(archived ? "Move to Inbox" : "Archive")}
           shortcut="A"
           onClick={() => {
             update.mutate({ id, patch: { status: archived ? "read" : "archived" } });
-            toast(archived ? "Moved back to Inbox" : "Archived", {
-              action: { label: "Undo", onClick: () => update.mutate({ id, patch: { status: archived ? "archived" : "read" } }) },
+            toast(t(archived ? "Moved back to Inbox" : "Archived"), {
+              action: { label: t("Undo"), onClick: () => update.mutate({ id, patch: { status: archived ? "archived" : "read" } }) },
             });
           }}
         >
@@ -114,24 +117,24 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
         </IconAction>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="More actions">
+            <Button variant="ghost" size="icon-sm" aria-label={t("More actions")}>
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuItem onSelect={() => update.mutate({ id, patch: { status: item.status === "unread" ? "read" : "unread" } })}>
-              <Check /> Mark as {item.status === "unread" ? "read" : "unread"}
+              <Check /> {t(item.status === "unread" ? "Mark as read" : "Mark as unread")}
             </DropdownMenuItem>
             {item.sourceUrl && (
               <DropdownMenuItem onSelect={copyLink}>
-                <Copy /> Copy original link
+                <Copy /> {t("Copy original link")}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onSelect={() => reprocess.mutate(id)}>
-              <RotateCw /> Re-analyze
+              <RotateCw /> {t("Re-analyze")}
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => checkActions.mutate()}>
-              <Zap /> Check for actions
+              <Zap /> {t("Check for actions")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -139,14 +142,14 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
               onSelect={() =>
                 remove.mutate(id, {
                   onSuccess: () => {
-                    toast("Deleted");
+                    toast(t("Deleted"));
                     qc.removeQueries({ queryKey: keys.item(id) });
                     onClose?.();
                   },
                 })
               }
             >
-              <Trash2 /> Delete
+              <Trash2 /> {t("Delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -162,7 +165,7 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
               <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5 text-[13px] text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5 text-foreground/80">
                   <SourceIcon type={item.sourceType} />
-                  {kindLabel(item.sourceType, item.contentKind)}
+                  {t(kindLabel(item.sourceType, item.contentKind))}
                 </span>
                 {(item.creatorName || item.domain) &&
                   (item.creatorUrl ? (
@@ -172,7 +175,7 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
                   ) : (
                     <span className="truncate">{item.creatorName ?? item.domain}</span>
                   ))}
-                <span title={fullDate(item.savedAt)}>Saved {relativeTime(item.savedAt)}</span>
+                <span title={fullDate(item.savedAt, locale)}>{t("Saved {time}", { time: relativeTime(item.savedAt, locale) })}</span>
               </div>
             </div>
             <h1 id="detail-title" className="text-[22px] leading-tight font-semibold tracking-[-0.015em] text-balance sm:text-2xl">
@@ -187,7 +190,7 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
               >
                 <span className="truncate">{item.canonicalUrl?.replace(/^https?:\/\/(www\.)?/, "")}</span>
                 <ArrowUpRight className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden />
-                <span className="sr-only">Open original</span>
+                <span className="sr-only">{t("Open original")}</span>
               </a>
             )}
           </div>
@@ -203,14 +206,14 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
           {item.whyItMatters && (
             <section aria-labelledby="why-title" className="border-l-2 border-signal pl-5">
               <h2 id="why-title" className="mb-1.5 text-[13px] font-medium text-signal">
-                Why this matters
+                {t("Why this matters")}
               </h2>
               <p className="font-reading text-[17px] leading-[1.6] text-foreground">{item.whyItMatters}</p>
             </section>
           )}
 
           {item.keyPoints.length > 0 && (
-            <Section title="Key takeaways">
+            <Section title={t("Key takeaways")}>
               <ul className="flex flex-col gap-2">
                 {item.keyPoints.map((point) => (
                   <li key={point} className="flex gap-3 text-[14.5px] leading-relaxed">
@@ -225,7 +228,7 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
           <ActionPanel item={item} />
 
           {item.actionItems.length > 0 && !item.actionState?.match(/action_ready|applied|needs_approval|running|waiting_user|blocked/) && (
-            <Section title="Action items">
+            <Section title={t("Action items")}>
               <ul className="flex flex-col gap-2">
                 {item.actionItems.map((action) => (
                   <li key={action} className="flex gap-3 text-[14.5px] leading-relaxed">
@@ -237,13 +240,13 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
             </Section>
           )}
 
-          <Section title="My note">
+          <Section title={t("My note")}>
             <NoteEditor key={item.id} itemId={item.id} initial={item.userNote} />
           </Section>
 
           <div className="flex flex-col gap-5">
             {item.tags.length > 0 && (
-              <Section title="Tags">
+              <Section title={t("Tags")}>
                 <div className="flex flex-wrap gap-1.5">
                   {item.tags.map((tag) => (
                     <Link
@@ -257,7 +260,7 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
                 </div>
               </Section>
             )}
-            <Section title="Collections">
+            <Section title={t("Collections")}>
               <div className="flex flex-wrap items-center gap-1.5">
                 {item.collections.map((c) => (
                   <Link
@@ -265,7 +268,7 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
                     href={`/inbox?collection=${c.id}`}
                     className="rounded-md border px-2 py-1 text-xs text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
                   >
-                    {c.name}
+                    {t(c.name)}
                   </Link>
                 ))}
                 <AddToCollection item={item} />
@@ -276,8 +279,8 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
           {item.contentText && item.sourceType !== "note" && (
             <details className="group rounded-lg border">
               <summary className="cursor-pointer list-none px-4 py-3 text-[13px] font-medium text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
-                <span className="group-open:hidden">Show extracted text</span>
-                <span className="hidden group-open:inline">Hide extracted text</span>
+                <span className="group-open:hidden">{t("Show extracted text")}</span>
+                <span className="hidden group-open:inline">{t("Hide extracted text")}</span>
               </summary>
               <p className="max-h-96 overflow-y-auto border-t px-4 py-3 text-[13.5px] leading-relaxed whitespace-pre-line text-muted-foreground">
                 {item.contentText}
@@ -286,7 +289,7 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
           )}
 
           {ready && (related.data?.length ?? 0) > 0 && (
-            <Section title="Related">
+            <Section title={t("Related")}>
               <ul className="-mx-2 flex flex-col">
                 {related.data!.map((r) => (
                   <li key={r.id}>
@@ -297,7 +300,7 @@ export function ItemDetail({ id, onClose, onOpenItem }: ItemDetailProps) {
                     >
                       <SourceIcon type={r.sourceType} className="text-muted-foreground" />
                       <span className="min-w-0 flex-1 truncate text-sm">{r.title}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{r.collection}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{r.collection && t(r.collection)}</span>
                     </button>
                   </li>
                 ))}

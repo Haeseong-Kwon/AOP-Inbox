@@ -5,6 +5,7 @@ import { ThemeProvider } from "next-themes";
 import { useEffect, useState, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { LocaleSync } from "@/lib/i18n/client";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -24,6 +25,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={client}>
         <TooltipProvider delayDuration={300}>
+          <LocaleSync />
           {children}
           <Toaster position="bottom-center" />
         </TooltipProvider>

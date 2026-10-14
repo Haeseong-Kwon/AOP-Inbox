@@ -10,7 +10,7 @@ for (const width of widthsArg.split(",").map(Number)) {
   page.on("pageerror", (e) => errors.push(`${width} ${page.url()} ${e.message}`));
   page.on("console", (m) => m.type() === "error" && errors.push(`${width} ${page.url()} console: ${m.text().slice(0, 200)}`));
   await page.goto(`${base}/login`);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("button", { name: /^(Sign in|로그인)$/ }).click();
   await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20000 });
   for (const p of paths.length ? paths : ["/"]) {
     await page.goto(base + p);

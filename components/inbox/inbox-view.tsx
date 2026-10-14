@@ -15,6 +15,7 @@ import { useCollections, useItems, useQueueNudge, useUpdateItem, type ListFilter
 import { useMediaQuery } from "@/lib/client/use-media-query";
 import { useStoredPreference } from "@/lib/client/use-client-value";
 import { ITEM_SORTS, ITEM_STATES, SOURCE_FILTERS, type ItemSummary } from "@/lib/items/types";
+import { useT } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { InboxEmpty } from "./empty-state";
 import { ItemCard, ItemListSkeleton, ItemRow } from "./item-views";
@@ -74,6 +75,7 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
 
 export function InboxView() {
   const { item: openId, ...filters } = useFilters();
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -150,7 +152,7 @@ export function InboxView() {
       else if (key === "a") {
         const archived = current.status === "archived";
         update.mutate({ id: current.id, patch: { status: archived ? "read" : "archived" } });
-        toast(archived ? "Moved back to Inbox" : "Archived");
+        toast(t(archived ? "Moved back to Inbox" : "Archived"));
       } else if (key === "o" && current.sourceUrl) window.open(current.sourceUrl, "_blank", "noopener,noreferrer");
       else if (key === "e") {
         if (!openId) openItem(current.id);
@@ -160,21 +162,22 @@ export function InboxView() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [items, cursorId, openId, openItem, closeItem, setParams, update]);
+  }, [items, cursorId, openId, openItem, closeItem, setParams, update, t]);
 
   const collectionName = useMemo(() => {
     if (!filters.collection || !collections) return null;
     for (const c of collections) {
-      if (c.id === filters.collection) return c.name;
+      const name = c.kind === "manual" ? c.name : t(c.name);
+      if (c.id === filters.collection) return name;
       const child = c.children.find((ch) => ch.id === filters.collection);
-      if (child) return `${c.name} / ${child.name}`;
+      if (child) return `${name} / ${child.name}`;
     }
-    return "Collection";
-  }, [filters.collection, collections]);
+    return t("Collection");
+  }, [filters.collection, collections, t]);
 
   const title =
     collectionName ??
-    (filters.tag ? `#${filters.tag}` : filters.source ? SOURCE_LABELS[filters.source] : filters.state ? STATE_LABELS[filters.state] : "Inbox");
+    (filters.tag ? `#${filters.tag}` : t(filters.source ? SOURCE_LABELS[filters.source] : filters.state ? STATE_LABELS[filters.state] : "Inbox"));
   const filtered = Boolean(filters.source || filters.state || filters.collection || filters.tag);
   const showPane = Boolean(openId) && wide;
 
@@ -186,43 +189,43 @@ export function InboxView() {
           <span className="flex-1" />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-muted-foreground" aria-label="Sort">
+              <Button variant="ghost" size="sm" className="text-muted-foreground" aria-label={t("Sort")}>
                 <ArrowDownUp aria-hidden />
-                <span className="hidden sm:inline">{SORT_LABELS[filters.sort ?? "recent"]}</span>
+                <span className="hidden sm:inline">{t(SORT_LABELS[filters.sort ?? "recent"])}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuRadioGroup value={filters.sort} onValueChange={(v) => setParams({ sort: v === "recent" ? null : v })}>
                 {ITEM_SORTS.map((s) => (
                   <DropdownMenuRadioItem key={s} value={s}>
-                    {SORT_LABELS[s]}
+                    {t(SORT_LABELS[s])}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="ghost" size="icon-sm" onClick={toggleView} aria-label={compact ? "Comfortable view" : "Compact view"} className="text-muted-foreground">
+          <Button variant="ghost" size="icon-sm" onClick={toggleView} aria-label={t(compact ? "Comfortable view" : "Compact view")} className="text-muted-foreground">
             {compact ? <LayoutList /> : <AlignJustify />}
           </Button>
         </div>
         <div className="scrollbar-none flex items-center gap-1 overflow-x-auto px-3 pb-2.5 sm:px-5">
           <FilterChip active={!filters.source} onClick={() => setParams({ source: null })}>
-            All
+            {t("All")}
           </FilterChip>
           {(["instagram", "web", "note"] as const).map((s) => (
             <FilterChip key={s} active={filters.source === s} onClick={() => setParams({ source: filters.source === s ? null : s })}>
-              {s === "note" ? "Notes" : SOURCE_LABELS[s]}
+              {t(s === "note" ? "Notes" : SOURCE_LABELS[s])}
             </FilterChip>
           ))}
           <span className="mx-2 h-4 w-px shrink-0 bg-border" aria-hidden />
           {(["unread", "read", "favorite", "actionable", "ready", "waiting", "applied", "archived"] as const).map((s) => (
             <FilterChip key={s} active={filters.state === s} onClick={() => setParams({ state: filters.state === s ? null : s })}>
-              {STATE_LABELS[s]}
+              {t(STATE_LABELS[s])}
             </FilterChip>
           ))}
           {(filters.collection || filters.tag) && (
             <FilterChip active onClick={() => setParams({ collection: null, tag: null })}>
-              Clear {filters.tag ? "tag" : "collection"} ×
+              {t(filters.tag ? "Clear tag ×" : "Clear collection ×")}
             </FilterChip>
           )}
         </div>
@@ -235,7 +238,7 @@ export function InboxView() {
           <div className="px-5 py-16 text-sm text-muted-foreground">
             {query.error.message}{" "}
             <button type="button" className="text-signal hover:underline" onClick={() => query.refetch()}>
-              Try again
+              {t("Try again")}
             </button>
           </div>
         ) : items.length === 0 ? (
@@ -268,8 +271,8 @@ export function InboxView() {
       {!wide && (
         <Sheet open={Boolean(openId)} onOpenChange={(open) => !open && closeItem()}>
           <SheetContent side="right" showCloseButton={false} className="gap-0 bg-background p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
-            <SheetTitle className="sr-only">Item details</SheetTitle>
-            <SheetDescription className="sr-only">Summary, notes and related items</SheetDescription>
+            <SheetTitle className="sr-only">{t("Item details")}</SheetTitle>
+            <SheetDescription className="sr-only">{t("Summary, notes and related items")}</SheetDescription>
             {openId && <ItemDetail key={openId} id={openId} onClose={closeItem} onOpenItem={openItem} />}
           </SheetContent>
         </Sheet>

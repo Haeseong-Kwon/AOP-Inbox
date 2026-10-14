@@ -10,6 +10,7 @@ import { ItemListSkeleton } from "@/components/inbox/item-views";
 import { apiGet, qs } from "@/lib/client/api";
 import { relativeTime } from "@/lib/client/format";
 import { useDebounced } from "@/lib/client/use-debounced";
+import { useLocale, useT } from "@/lib/i18n/client";
 import type { MatchReason, SearchHit } from "@/lib/search/hybrid";
 
 const REASON_LABELS: Record<MatchReason, string> = {
@@ -30,6 +31,8 @@ export function SearchView() {
   const [value, setValue] = useState(params.get("q") ?? "");
   const q = useDebounced(value.trim(), 300);
   const inputRef = useRef<HTMLInputElement>(null);
+  const t = useT();
+  const locale = useLocale();
 
   useEffect(() => {
     router.replace(`${pathname}${qs({ q })}`, { scroll: false });
@@ -42,6 +45,7 @@ export function SearchView() {
     placeholderData: (prev) => prev,
   });
   const hits = q ? (data?.hits ?? []) : [];
+  const [askBefore, askAfter] = t("Try fewer or different words, or {link} instead.").split("{link}");
 
   return (
     <div className="mx-auto w-full max-w-[760px] px-4 pt-8 pb-28 sm:px-8 md:pt-14 md:pb-16">
@@ -57,12 +61,12 @@ export function SearchView() {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === "Escape" && setValue("")}
-          placeholder="Search by words or by meaning…"
-          aria-label="Search your inbox"
+          placeholder={t("Search by words or by meaning…")}
+          aria-label={t("Search your inbox")}
           className="h-full min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-muted-foreground/70 focus-visible:outline-none"
         />
         {value && (
-          <button type="button" onClick={() => setValue("")} aria-label="Clear search" className="text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={() => setValue("")} aria-label={t("Clear search")} className="text-muted-foreground hover:text-foreground">
             <X className="size-4" />
           </button>
         )}
@@ -71,7 +75,7 @@ export function SearchView() {
       <div className="pt-6" aria-live="polite">
         {!q ? (
           <div className="flex flex-col gap-3 px-1 pt-4">
-            <p className="text-sm text-muted-foreground">Describe what you remember — the topic, the idea, roughly what it showed. Try:</p>
+            <p className="text-sm text-muted-foreground">{t("Describe what you remember — the topic, the idea, roughly what it showed. Try:")}</p>
             <div className="flex flex-wrap gap-2">
               {EXAMPLES.map((ex) => (
                 <button
@@ -91,20 +95,20 @@ export function SearchView() {
           <ItemListSkeleton rows={4} />
         ) : hits.length === 0 ? (
           <div className="flex flex-col gap-2 px-1 pt-4">
-            <p className="text-[15px] font-medium">No matches for “{q}”.</p>
+            <p className="text-[15px] font-medium">{t("No matches for “{q}”.", { q })}</p>
             <p className="text-sm text-muted-foreground">
-              Try fewer or different words, or{" "}
+              {askBefore}
               <Link href={`/ask${qs({ q })}`} className="text-signal hover:underline">
-                ask your inbox
-              </Link>{" "}
-              instead.
+                {t("ask your inbox")}
+              </Link>
+              {askAfter}
             </p>
           </div>
         ) : (
           <>
             <p className="px-1 pb-2 text-xs text-muted-foreground">
-              {hits.length} {hits.length === 1 ? "result" : "results"}
-              {isFetching && " · updating"}
+              {t(hits.length === 1 ? "{n} result" : "{n} results", { n: hits.length })}
+              {isFetching && ` · ${t("updating")}`}
             </p>
             <ol className="-mx-3 flex flex-col">
               {hits.map(({ item, reasons }) => (
@@ -118,11 +122,11 @@ export function SearchView() {
                     <span className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-6 text-xs text-muted-foreground">
                       {reasons.map((r) => (
                         <span key={r} className={r === "meaning" ? "text-signal" : "text-foreground/70"}>
-                          {REASON_LABELS[r]}
+                          {t(REASON_LABELS[r])}
                         </span>
                       ))}
                       <span>{item.creatorName ?? item.domain}</span>
-                      <span>{relativeTime(item.savedAt)}</span>
+                      <span>{relativeTime(item.savedAt, locale)}</span>
                     </span>
                   </Link>
                 </li>

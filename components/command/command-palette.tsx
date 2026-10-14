@@ -12,8 +12,10 @@ import { apiGet, qs } from "@/lib/client/api";
 import type { SearchHit } from "@/lib/search/hybrid";
 import type { ItemPage } from "@/lib/items/types";
 import { useDebounced } from "@/lib/client/use-debounced";
+import { useT } from "@/lib/i18n/client";
 
 export function CommandPalette() {
+  const t = useT();
   const { paletteOpen, setPaletteOpen, openCapture } = useUI();
   const [query, setQuery] = useState("");
   const router = useRouter();
@@ -62,16 +64,16 @@ export function CommandPalette() {
         setPaletteOpen(open);
         if (!open) setQuery("");
       }}
-      title="Command palette"
-      description="Search items or run a command"
+      title={t("Command palette")}
+      description={t("Search items or run a command")}
       className="top-[18%] translate-y-0 sm:max-w-xl"
     >
       <Command loop>
-      <CommandInput value={query} onValueChange={setQuery} placeholder="Search your inbox or type a command…" />
+      <CommandInput value={query} onValueChange={setQuery} placeholder={t("Search your inbox or type a command…")} />
       <CommandList className="max-h-[min(420px,60dvh)]">
-        <CommandEmpty>Nothing matches. Press Enter on “Ask Inbox” to ask instead.</CommandEmpty>
+        <CommandEmpty>{t("Nothing matches. Press Enter on “Ask Inbox” to ask instead.")}</CommandEmpty>
         {items.length > 0 && (
-          <CommandGroup heading={debounced.length > 1 ? "Items" : "Recently viewed"}>
+          <CommandGroup heading={debounced.length > 1 ? t("Items") : t("Recently viewed")}>
             {items.map((item) => (
               <CommandItem key={item.id} value={`item ${item.id} ${item.title} ${query}`} onSelect={() => go(`/inbox?item=${item.id}`)}>
                 <SourceIcon type={item.sourceType} />
@@ -80,11 +82,11 @@ export function CommandPalette() {
             ))}
           </CommandGroup>
         )}
-        <CommandGroup heading="Commands">
+        <CommandGroup heading={t("Commands")}>
           {nav.map((c) => (
-            <CommandItem key={c.label} value={c.alwaysMatch ? `${c.label} ${query}` : c.label} onSelect={c.action}>
+            <CommandItem key={c.label} value={c.alwaysMatch ? `${t(c.label)} ${query}` : t(c.label)} onSelect={c.action}>
               {c.icon}
-              {c.label}
+              {t(c.label)}
               {c.shortcut && <CommandShortcut>{c.shortcut}</CommandShortcut>}
             </CommandItem>
           ))}

@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { SourceIcon } from "@/components/inbox/source-icon";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n/client";
 import type { ItemSummary } from "@/lib/items/types";
 import type { AskExecutionSource, AskSource } from "@/lib/search/ask";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,7 @@ async function streamAsk(question: string, onEvent: (e: { type: string; [k: stri
 
 export function AskView() {
   const params = useSearchParams();
+  const t = useT();
   const [input, setInput] = useState(params.get("q") ?? "");
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -92,8 +94,8 @@ export function AskView() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[720px] flex-col px-4 pt-8 sm:px-8 md:pt-14">
       <header className="flex flex-col gap-1.5 pb-8">
-        <h1 className="text-[26px] font-semibold tracking-[-0.02em]">Ask Inbox</h1>
-        <p className="text-[15px] text-muted-foreground">Answers come only from what you’ve saved, with sources you can open.</p>
+        <h1 className="text-[26px] font-semibold tracking-[-0.02em]">{t("Ask Inbox")}</h1>
+        <p className="text-[15px] text-muted-foreground">{t("Answers come only from what you’ve saved, with sources you can open.")}</p>
       </header>
 
       <div className="flex flex-1 flex-col gap-12 pb-8">
@@ -103,10 +105,10 @@ export function AskView() {
               <button
                 key={s}
                 type="button"
-                onClick={() => ask(s)}
+                onClick={() => ask(t(s))}
                 className="rounded-lg border px-4 py-3 text-left text-[14.5px] text-foreground/85 transition-colors hover:border-foreground/20 hover:bg-accent/50"
               >
-                {s}
+                {t(s)}
               </button>
             ))}
           </div>
@@ -119,19 +121,19 @@ export function AskView() {
               <AnswerText text={ex.answer} onCite={(n) => jumpToSource(ex.id, n)} />
             ) : ex.status === "streaming" ? (
               <p className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
-                <Loader2 className="size-4 animate-spin" aria-hidden /> Reading your saved items…
+                <Loader2 className="size-4 animate-spin" aria-hidden /> {t("Reading your saved items…")}
               </p>
             ) : null}
-            {ex.status === "error" && <p className="text-sm text-destructive">{ex.error}</p>}
+            {ex.status === "error" && <p className="text-sm text-destructive">{t(ex.error ?? "")}</p>}
 
             {ex.status === "done" && ex.setups.length > 0 && (
               <div className="flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-[14px]">
                 <span>
-                  {ex.setups.length} related {ex.setups.length === 1 ? "setup" : "setups"} found
+                  {t(ex.setups.length === 1 ? "{n} related setup found" : "{n} related setups found", { n: ex.setups.length })}
                 </span>
                 {ex.setups.slice(0, 3).map((s) => (
                   <Link key={s.id} href={`/items/${s.id}/setup`} className="text-[13px] text-signal hover:underline">
-                    Review “{s.title.length > 32 ? `${s.title.slice(0, 30)}…` : s.title}”
+                    {t("Review “{title}”", { title: s.title.length > 32 ? `${s.title.slice(0, 30)}…` : s.title })}
                   </Link>
                 ))}
               </div>
@@ -139,7 +141,7 @@ export function AskView() {
 
             {ex.executions.length > 0 && (
               <div className="flex flex-col gap-2 border-t pt-4">
-                <h3 className="text-[13px] font-medium text-muted-foreground">Setup history · {ex.executions.length}</h3>
+                <h3 className="text-[13px] font-medium text-muted-foreground">{t("Setup history · {n}", { n: ex.executions.length })}</h3>
                 <ol className="-mx-2 flex flex-col">
                   {ex.executions.map((e) => (
                     <li key={e.jobId}>
@@ -151,7 +153,7 @@ export function AskView() {
                         <span className="w-6 shrink-0 text-center text-xs font-medium text-signal tabular-nums">{e.label}</span>
                         <span className="min-w-0 flex-1 truncate text-[14px]">{e.itemTitle}</span>
                         <span className="shrink-0 text-xs text-muted-foreground">
-                          {e.status} {e.date}
+                          {t(e.status)} {e.date}
                         </span>
                       </Link>
                     </li>
@@ -162,7 +164,7 @@ export function AskView() {
 
             {ex.sources.length > 0 && (
               <div className="flex flex-col gap-2 border-t pt-4">
-                <h3 className="text-[13px] font-medium text-muted-foreground">Sources · {ex.sources.length}</h3>
+                <h3 className="text-[13px] font-medium text-muted-foreground">{t("Sources · {n}", { n: ex.sources.length })}</h3>
                 <ol className="-mx-2 flex flex-col">
                   {ex.sources.map(({ index, item }) => (
                     <li key={item.id}>
@@ -205,11 +207,11 @@ export function AskView() {
             }}
             rows={1}
             autoFocus
-            aria-label="Ask a question about your saved items"
-            placeholder="Ask about anything you’ve saved…"
+            aria-label={t("Ask a question about your saved items")}
+            placeholder={t("Ask about anything you’ve saved…")}
             className="max-h-40 min-h-9 flex-1 resize-none bg-transparent py-2 text-[15px] outline-none placeholder:text-muted-foreground/70 focus-visible:outline-none field-sizing-content"
           />
-          <Button type="submit" size="icon" disabled={busy || input.trim().length < 2} aria-label="Ask">
+          <Button type="submit" size="icon" disabled={busy || input.trim().length < 2} aria-label={t("Ask")}>
             {busy ? <Loader2 className="animate-spin" /> : <ArrowUp />}
           </Button>
         </div>

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { ImportStats } from "@/db/schema";
 import { apiSend } from "@/lib/client/api";
+import { useT } from "@/lib/i18n/client";
 import type { ImportPreview } from "@/lib/import/service";
 import { extractLinksFromFile, ImportFileError, type ExtractedLink } from "@/lib/import/meta-export";
 import { cn } from "@/lib/utils";
@@ -20,9 +21,10 @@ type Step =
   | { kind: "done"; stats: ImportStats };
 
 function Row({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
+  const t = useT();
   return (
     <div className={cn("flex items-baseline justify-between py-2", strong && "font-semibold")}>
-      <dt className={strong ? "" : "text-muted-foreground"}>{label}</dt>
+      <dt className={strong ? "" : "text-muted-foreground"}>{t(label)}</dt>
       <dd className="tabular-nums">{value.toLocaleString()}</dd>
     </div>
   );
@@ -35,6 +37,7 @@ export function ImportFlow() {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
+  const t = useT();
 
   const preview = async (links: ExtractedLink[], include: boolean) =>
     apiSend<ImportPreview>("/api/import/preview", "POST", { links, includeOtherLinks: include });
@@ -79,17 +82,16 @@ export function ImportFlow() {
   return (
     <div className="mx-auto w-full max-w-[640px] px-4 pt-8 pb-28 sm:px-8 md:pt-14 md:pb-16">
       <header className="flex flex-col gap-1.5 pb-8">
-        <h1 className="text-[26px] font-semibold tracking-[-0.02em]">Import Instagram history</h1>
+        <h1 className="text-[26px] font-semibold tracking-[-0.02em]">{t("Import Instagram history")}</h1>
         <p className="text-[15px] leading-relaxed text-muted-foreground">
-          Bring in every Reel you’ve sent yourself, using the copy of your data Meta gives you.
+          {t("Bring in every Reel you’ve sent yourself, using the copy of your data Meta gives you.")}
         </p>
       </header>
 
       <div className="mb-8 flex gap-3 rounded-lg border bg-surface px-4 py-3.5 text-[14px] leading-relaxed">
         <ShieldCheck className="mt-0.5 size-4 shrink-0 text-signal" aria-hidden />
         <p>
-          AOP-Inbox extracts supported links. Your full message history is not stored. The file is read on this device; only links and dates are
-          sent.
+          {t("AOP-Inbox extracts supported links. Your full message history is not stored. The file is read on this device; only links and dates are sent.")}
         </p>
       </div>
 
@@ -97,10 +99,17 @@ export function ImportFlow() {
         <>
           <ol className="mb-8 flex list-decimal flex-col gap-2 pl-5 text-[14.5px] leading-relaxed text-foreground/85 marker:text-muted-foreground">
             <li>
-              In Instagram, open <span className="font-medium">Accounts Center → Your information and permissions → Download your information</span>.
+              {t("In Instagram, open {path}.").split("{path}").map((part, i) =>
+                i === 0 ? part : (
+                  <span key={i}>
+                    <span className="font-medium">{t("Accounts Center → Your information and permissions → Download your information")}</span>
+                    {part}
+                  </span>
+                ),
+              )}
             </li>
-            <li>Choose Messages, format JSON, and request the download.</li>
-            <li>When Meta emails you, download the .zip and drop it here.</li>
+            <li>{t("Choose Messages, format JSON, and request the download.")}</li>
+            <li>{t("When Meta emails you, download the .zip and drop it here.")}</li>
           </ol>
           <button
             type="button"
@@ -122,8 +131,8 @@ export function ImportFlow() {
             )}
           >
             <Upload className="size-5 text-muted-foreground" aria-hidden />
-            <span className="text-[15px] font-medium">Choose your export file</span>
-            <span className="text-[13px] text-muted-foreground">.zip from Meta, or a .json / .html file from inside it</span>
+            <span className="text-[15px] font-medium">{t("Choose your export file")}</span>
+            <span className="text-[13px] text-muted-foreground">{t(".zip from Meta, or a .json / .html file from inside it")}</span>
           </button>
           <input
             ref={inputRef}
@@ -138,7 +147,7 @@ export function ImportFlow() {
           />
           {error && (
             <p role="alert" className="mt-4 text-sm text-destructive">
-              {error}
+              {t(error)}
             </p>
           )}
         </>
@@ -147,7 +156,7 @@ export function ImportFlow() {
       {step.kind === "reading" && (
         <div className="flex items-center gap-3 rounded-xl border px-5 py-6 text-[15px]" role="status">
           <Loader2 className="size-4 animate-spin text-signal" aria-hidden />
-          Scanning {step.fileName} for links…
+          {t("Scanning {file} for links…", { file: step.fileName })}
         </div>
       )}
 
@@ -158,7 +167,7 @@ export function ImportFlow() {
             <span className="truncate">{step.fileName}</span>
           </div>
           <div>
-            <p className="pb-2 text-[22px] font-semibold tracking-[-0.015em] tabular-nums">Found {step.preview.totalLinks.toLocaleString()} links</p>
+            <p className="pb-2 text-[22px] font-semibold tracking-[-0.015em] tabular-nums">{t("Found {n} links", { n: step.preview.totalLinks.toLocaleString() })}</p>
             <dl className="divide-y border-y text-[15px]">
               <Row label="Instagram Reels" value={step.preview.instagramReels} />
               <Row label="Instagram posts" value={step.preview.instagramPosts} />
@@ -169,17 +178,17 @@ export function ImportFlow() {
           </div>
           <label className="flex items-center justify-between gap-4 text-[14.5px]">
             <span>
-              Also import other links
-              <span className="block text-[13px] text-muted-foreground">Articles, YouTube and anything else you shared with yourself.</span>
+              {t("Also import other links")}
+              <span className="block text-[13px] text-muted-foreground">{t("Articles, YouTube and anything else you shared with yourself.")}</span>
             </span>
             <Switch checked={includeOther} onCheckedChange={toggleOther} />
           </label>
           <div className="flex gap-2">
             <Button size="lg" onClick={commit} disabled={step.preview.newItems === 0}>
-              Import {step.preview.newItems.toLocaleString()} items
+              {t("Import {n} items", { n: step.preview.newItems.toLocaleString() })}
             </Button>
             <Button size="lg" variant="ghost" onClick={() => setStep({ kind: "pick" })}>
-              Choose another file
+              {t("Choose another file")}
             </Button>
           </div>
         </div>
@@ -188,19 +197,18 @@ export function ImportFlow() {
       {step.kind === "importing" && (
         <div className="flex items-center gap-3 rounded-xl border px-5 py-6 text-[15px]" role="status">
           <Loader2 className="size-4 animate-spin text-signal" aria-hidden />
-          Adding items to your inbox…
+          {t("Adding items to your inbox…")}
         </div>
       )}
 
       {step.kind === "done" && (
         <div className="flex flex-col items-start gap-4">
-          <p className="text-[22px] font-semibold tracking-[-0.015em]">Imported {step.stats.created.toLocaleString()} items.</p>
+          <p className="text-[22px] font-semibold tracking-[-0.015em]">{t("Imported {n} items.", { n: step.stats.created.toLocaleString() })}</p>
           <p className="text-[15px] leading-relaxed text-muted-foreground">
-            They’re in your inbox now, dated when you originally shared them. Summaries and collections fill in over the next few minutes — you can
-            keep using the app.
+            {t("They’re in your inbox now, dated when you originally shared them. Summaries and collections fill in over the next few minutes — you can keep using the app.")}
           </p>
           <Button asChild size="lg">
-            <Link href="/inbox?source=instagram">Open Instagram items</Link>
+            <Link href="/inbox?source=instagram">{t("Open Instagram items")}</Link>
           </Button>
         </div>
       )}

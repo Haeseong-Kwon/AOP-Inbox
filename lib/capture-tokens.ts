@@ -83,7 +83,7 @@ export async function consumeCaptureToken(token: string): Promise<{ userId: stri
     })
     .where(and(eq(captureTokens.tokenHash, sha(token)), isNull(captureTokens.revokedAt)))
     .returning({ id: captureTokens.id, userId: captureTokens.userId, windowCount: captureTokens.windowCount });
-  if (!row) throw new HttpError(401, "This capture token was revoked or doesn't exist. Create a new one in Settings → Capture.");
+  if (!row) throw new HttpError(401, "This capture token was revoked or doesn't exist. Create a new one in Settings → Save from iPhone.");
   if (row.windowCount > WINDOW_LIMIT) throw new HttpError(429, "Too many saves from this token in the last hour.");
   return { userId: row.userId, tokenId: row.id };
 }

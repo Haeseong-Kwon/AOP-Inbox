@@ -106,6 +106,13 @@ Phase 0 audit: `docs/action-layer-audit.md`. Architecture: `docs/action-layer-ar
 - Env (production): `BETTER_AUTH_SECRET`, `CRON_SECRET` (generated, sensitive), `BETTER_AUTH_URL`, `AUTH_ALLOWED_EMAILS`, `AI_PROVIDER=mock`, plus Neon's `DATABASE_URL`/`DATABASE_URL_UNPOOLED`.
 - Migrate: `vercel env run -e production -- sh -c 'DATABASE_URL="$DATABASE_URL_UNPOOLED" pnpm db:migrate'`, then `vercel deploy --prod`.
 
+## Languages (2026-10-14)
+
+- Korean is the default; English stays complete. Switch in Settings → Language (cookie `aop-locale`, 1 year).
+- gettext-style: English source text is the key (`lib/i18n`), Korean catalogs in `lib/i18n/ko/*.ts` split by area. Server strings stay English and translate at display time; filled-in server templates (risk reasons, notifications) match `{placeholder}` keys in `ko/server.ts`.
+- The iPhone Shortcut (no cookie) gets Korean messages. Static page titles are Korean in both languages (metadata is static under Cache Components).
+- AI-written content (titles, summaries) follows the note/content language, not the UI language; the offline mock writes English.
+
 ## Next priorities
 
 1. Run with a real `AI_API_KEY`; tune `analyze-item`, `extract-facts` and `structure-setup` prompts against `pnpm eval` + 20–30 real Reels; check cost in `ai_usage`.
