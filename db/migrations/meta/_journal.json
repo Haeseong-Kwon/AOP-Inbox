@@ -50,6 +50,13 @@
       "when": 1791950239253,
       "tag": "0006_instagram_link_confirm",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793385289920,
+      "tag": "0007_instagram_token",
+      "breakpoints": true
     }
   ]
 }

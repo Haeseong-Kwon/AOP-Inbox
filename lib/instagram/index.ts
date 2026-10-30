@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { and, eq, gt, isNotNull, lt, sql } from "drizzle-orm";
-import { instagramInbound, instagramLinks } from "@/db/schema";
+import { instagramInbound, instagramLinks, instagramToken } from "@/db/schema";
 import { db } from "@/lib/db";
 import { HttpError } from "@/lib/errors";
 import { errorMessage, log } from "@/lib/log";
@@ -182,15 +182,49 @@ export async function pruneInbound(): Promise<number> {
   return rows.length;
 }
 
-/* ─── Replies ────────────────────────────────────────────────────────────── */
+/* ─── Bot token ──────────────────────────────────────────────────────────── */
 
 const GRAPH = "https://graph.instagram.com/v25.0";
+const REFRESH_EVERY_MS = 7 * 24 * 60 * 60_000;
+
+/** The stored refresh of the env token, unless the env token has since been replaced. */
+async function storedToken(config: InstagramConfig) {
+  const row = await db.query.instagramToken.findFirst();
+  return row?.seedHash === sha(config.accessToken) ? row : null;
+}
+
+export async function botToken(config: InstagramConfig): Promise<string> {
+  return (await storedToken(config))?.accessToken ?? config.accessToken;
+}
+
+/** Weekly refresh keeps the 60-day token alive. True when a new token was stored. Never logs the token. */
+export async function refreshBotToken(config: InstagramConfig): Promise<boolean> {
+  const stored = await storedToken(config);
+  if (stored && Date.now() - stored.refreshedAt.getTime() < REFRESH_EVERY_MS) return false;
+  try {
+    const url = `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(stored?.accessToken ?? config.accessToken)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    const body = (await res.json().catch(() => ({}))) as { access_token?: unknown };
+    if (!res.ok || typeof body.access_token !== "string" || !body.access_token) {
+      log.warn("instagram.token_refresh_failed", { status: res.status });
+      return false;
+    }
+    const values = { accessToken: body.access_token, seedHash: sha(config.accessToken), refreshedAt: new Date() };
+    await db.insert(instagramToken).values(values).onConflictDoUpdate({ target: instagramToken.id, set: values });
+    return true;
+  } catch (error) {
+    log.warn("instagram.token_refresh_failed", { error: errorMessage(error) });
+    return false;
+  }
+}
+
+/* ─── Replies ────────────────────────────────────────────────────────────── */
 
 /** The sender's @username (Meta allows this for people who have messaged the account). Best effort. */
 export async function senderUsername(config: InstagramConfig, igsid: string): Promise<string | null> {
   try {
     const res = await fetch(`${GRAPH}/${encodeURIComponent(igsid)}?fields=username`, {
-      headers: { authorization: `Bearer ${config.accessToken}` },
+      headers: { authorization: `Bearer ${await botToken(config)}` },
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) return null;
@@ -206,7 +240,7 @@ export async function reply(config: InstagramConfig, igsid: string, text: string
   try {
     const res = await fetch(`${GRAPH}/${config.accountId}/messages`, {
       method: "POST",
-      headers: { authorization: `Bearer ${config.accessToken}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${await botToken(config)}`, "content-type": "application/json" },
       body: JSON.stringify({ recipient: { id: igsid }, message: { text } }),
       signal: AbortSignal.timeout(8_000),
     });

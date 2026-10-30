@@ -47,8 +47,7 @@ You need: an Instagram account for the bot, a Meta developer account, and the de
 
 ## Operating notes
 
-- **Token expiry:** the long-lived token lasts 60 days. Refresh it before then and update `INSTAGRAM_ACCESS_TOKEN`:
-  `curl "https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=$TOKEN"`. If it lapses, saving keeps failing silently on Meta's side (no webhooks) and replies fail (`instagram.reply_failed` in logs).
+- **Token expiry:** the long-lived token lasts 60 days. Maintenance refreshes it weekly on its own (`refresh_access_token`) and stores the new one in `instagram_token`; `INSTAGRAM_ACCESS_TOKEN` is only the seed. Pasting a new token into the env replaces the stored one. If refreshes fail (`instagram.token_refresh_failed` in logs, e.g. the token already lapsed), generate a new token (step 4), update the env and redeploy. A lapsed token means no webhooks from Meta and failed replies (`instagram.reply_failed`).
 - **Signature errors** (`instagram.bad_signature` in logs, 401s in Meta's webhook dashboard): the secret doesn't match the app that signs deliveries — use the Instagram app secret from step 6; for apps using Facebook Login it's the Meta app secret (App settings → Basic).
 - **Opening it to the public** (people without a tester role) requires Meta App Review for `instagram_business_manage_messages` and Business Verification.
 - **Reply window:** the bot only replies to messages it just received, well inside Meta's 24-hour messaging window.

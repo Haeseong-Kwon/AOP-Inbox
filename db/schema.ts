@@ -634,6 +634,18 @@ export const instagramInbound = pgTable("instagram_inbound", {
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * The bot's long-lived access token after automatic refreshes (Meta tokens last
+ * 60 days). `seedHash` is the hash of the env token it grew from: pasting a new
+ * token into the env makes this row stale, so the env always wins.
+ */
+export const instagramToken = pgTable("instagram_token", {
+  id: text("id").primaryKey().default("bot"),
+  accessToken: text("access_token").notNull(),
+  seedHash: text("seed_hash").notNull(),
+  refreshedAt: timestamp("refreshed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type Item = typeof items.$inferSelect;
 export type ExecutionJob = typeof executionJobs.$inferSelect;
 export type Device = typeof devices.$inferSelect;

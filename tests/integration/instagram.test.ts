@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { instagramLinks, items, user } from "@/db/schema";
 import { db } from "@/lib/db";
-import { confirmLink, createLinkCode, linkStatus, rejectPendingLink, unlink, validSignature, type InstagramConfig } from "@/lib/instagram";
+import { botToken, confirmLink, createLinkCode, linkStatus, refreshBotToken, rejectPendingLink, unlink, validSignature, type InstagramConfig } from "@/lib/instagram";
 import { handleMessage, messagesFor, sharedMedia, type InboundMessage } from "@/lib/instagram/inbound";
 import { resetDatabase } from "./helpers";
 
@@ -201,5 +201,34 @@ describe("webhook route", () => {
     vi.stubEnv("INSTAGRAM_ACCESS_TOKEN", "");
     const { POST } = await import("@/app/api/instagram/webhook/route");
     expect((await POST(new Request("https://x/api/instagram/webhook", { method: "POST", body: "{}" }))).status).toBe(404);
+  });
+});
+
+describe("bot token refresh", () => {
+  const refreshed = (token: string) => vi.fn(async (url: string) => Response.json({ access_token: url && token, token_type: "bearer", expires_in: 5_184_000 }));
+
+  it("refreshes the env token once, then uses the stored one until a week passes", async () => {
+    const fetchMock = refreshed("tok-2");
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await botToken(config)).toBe("tok");
+
+    expect(await refreshBotToken(config)).toBe(true);
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("grant_type=ig_refresh_token");
+    expect(await botToken(config)).toBe("tok-2");
+
+    expect(await refreshBotToken(config)).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a token pasted into the env replace the stored one", async () => {
+    vi.stubGlobal("fetch", refreshed("tok-2"));
+    await refreshBotToken(config);
+    expect(await botToken({ ...config, accessToken: "pasted" })).toBe("pasted");
+  });
+
+  it("keeps the current token when Meta refuses", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: { message: "expired" } }, { status: 400 })));
+    expect(await refreshBotToken(config)).toBe(false);
+    expect(await botToken(config)).toBe("tok");
   });
 });

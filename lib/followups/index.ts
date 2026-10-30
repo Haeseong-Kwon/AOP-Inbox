@@ -3,7 +3,7 @@ import { and, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { actionAnalysisCache, executionJobs, items, notifications, usageFeedback, user, type ExecutionJob } from "@/db/schema";
 import { db } from "@/lib/db";
 import { expireStaleJobs } from "@/lib/execution/jobs";
-import { pruneInbound } from "@/lib/instagram";
+import { instagramConfig, pruneInbound, refreshBotToken } from "@/lib/instagram";
 import { pruneEmptyAutoCollections, registerJobHandler } from "@/lib/ingestion/pipeline";
 import { enqueue, type Job } from "@/lib/jobs/queue";
 import { log } from "@/lib/log";
@@ -115,8 +115,10 @@ async function maintenance(): Promise<void> {
     .delete(notifications)
     .where(and(lt(notifications.createdAt, new Date(Date.now() - RETENTION.resolvedNotificationDays * DAY)), sql`(${notifications.resolvedAt} is not null or ${notifications.readAt} is not null)`));
   const inboundPruned = await pruneInbound();
+  const instagram = instagramConfig();
+  const tokenRefreshed = instagram ? await refreshBotToken(instagram) : false;
   const emptied = await pruneEmptyAutoCollections();
-  log.info("maintenance.done", { expired, resurfaced, inboundPruned, emptyCollections: emptied.collections, unusedTags: emptied.tags });
+  log.info("maintenance.done", { expired, resurfaced, inboundPruned, tokenRefreshed, emptyCollections: emptied.collections, unusedTags: emptied.tags });
 }
 
 /** One maintenance job per hour; cheap to call on every drain. */
